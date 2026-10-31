@@ -1,0 +1,8 @@
+{
+  "name": "Groww Connect",
+  "description": "Multi-market quantitative trading desk for Nifty 100, Crypto, NASDAQ, and ETFs with real-time streaming, SMA crossovers, Monte Carlo simulation, breakout scanning, alerts, stock portfolio, opportunity portfolio mix, and Google Search grounded news.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,166 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Theme tokens. Accent presets are selected in the header (blue, sea, brass) */
+:root {
+  --bg: #0b1016;
+  --surface: #121922;
+  --surface-2: #1a2330;
+  --fg: #e7eef7;
+  --muted: #93a1b5;
+  --line: #2a3648;
+  --accent: #4ea1ff;
+  --accent-fg: #061018;
+  --up: #3dcc8e;
+  --down: #f07272;
+  --watch: #e2b15a;
+  --hold: #9aafc4;
+}
+
+[data-accent="sea"] {
+  --accent: #2fbfa0;
+  --accent-fg: #041410;
+}
+
+[data-accent="brass"] {
+  --accent: #e0b15a;
+  --accent-fg: #1a1204;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-primary: var(--accent);
+  --color-primary-fg: var(--accent-fg);
+  --color-border: var(--line);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-watch: var(--watch);
+  --color-hold: var(--hold);
+  --font-sans: "Outfit", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  html {
+    color-scheme: dark;
+    background: var(--bg);
+  }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .swatch-blue { background: #4ea1ff; }
+  .swatch-sea { background: #2fbfa0; }
+  .swatch-brass { background: #e0b15a; }
+  .tone-up { background: color-mix(in srgb, var(--up) 18%, transparent); color: var(--up); }
+  .tone-down { background: color-mix(in srgb, var(--down) 18%, transparent); color: var(--down); }
+  .tone-watch { background: color-mix(in srgb, var(--watch) 18%, transparent); color: var(--watch); }
+  .tone-hold { background: color-mix(in srgb, var(--hold) 18%, transparent); color: var(--hold); }
+  .note-down { border-color: color-mix(in srgb, var(--down) 45%, transparent); }
+  .note-watch { border-color: color-mix(in srgb, var(--watch) 45%, transparent); }
+}
+
+@keyframes flash-up {
+  0% { background-color: color-mix(in srgb, var(--up) 35%, transparent); }
+  100% { background-color: transparent; }
+}
+
+@keyframes flash-down {
+  0% { background-color: color-mix(in srgb, var(--down) 35%, transparent); }
+  100% { background-color: transparent; }
+}
+
+.flash-price-up {
+  animation: flash-up 1.2s ease-out;
+}
+
+.flash-price-down {
+  animation: flash-down 1.2s ease-out;
+}
+
+/* Official Google Sign-In Material Button (Dark Theme) */
+.gsi-material-button {
+  -moz-user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  -webkit-appearance: none;
+  background-color: #131314;
+  background-image: none;
+  border: 1px solid #747775;
+  border-radius: 6px;
+  box-sizing: border-box;
+  color: #e3e3e3;
+  cursor: pointer;
+  font-size: 13px;
+  height: 38px;
+  letter-spacing: 0.25px;
+  outline: none;
+  overflow: hidden;
+  padding: 0 14px;
+  position: relative;
+  text-align: center;
+  transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+  vertical-align: middle;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+}
+
+.gsi-material-button:hover {
+  background-color: #202124;
+  border-color: #8e918f;
+}
+
+.gsi-material-button-content-wrapper {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  height: 100%;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+  gap: 10px;
+}
+
+.gsi-material-button-icon {
+  height: 18px;
+  width: 18px;
+  min-width: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gsi-material-button-contents {
+  font-weight: 500;
+  vertical-align: top;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
