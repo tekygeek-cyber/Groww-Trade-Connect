@@ -8,13 +8,19 @@ import {
 import { useMarketQuotes } from './quotes-context';
 import { getConstituent } from '../data/universes';
 import type { MarketType } from '../types/market';
+import {
+  type CashCurrency, type CurrencyLedger,
+  migrateLegacyInrCash, updateCurrencyCash, validateCurrencyLedger,
+} from './currency-ledger';
 
 interface PortfolioContextValue {
   holdings: PortfolioHolding[];
   summary: PortfolioSummary;
   mixPlan: PortfolioMixPlan;
-  cashReserve: number;
+  cashReserve: number; // backwards-compatible INR alias; never used as USD/USDT
+  cashBalances: CurrencyLedger;
   setCashReserve: (amount: number) => void;
+  setCurrencyCash: (currency: CashCurrency, amount: number) => void;
   addHolding: (holding: Omit<PortfolioHolding, 'id'>) => void;
   updateHolding: (id: string, updates: Partial<PortfolioHolding>) => void;
   removeHolding: (id: string) => void;
@@ -25,6 +31,7 @@ interface PortfolioContextValue {
 
 const STORAGE_KEY = 'groww_portfolio_holdings_v1';
 const CASH_STORAGE_KEY = 'groww_portfolio_cash_v1';
+const LEDGER_STORAGE_KEY = 'groww_currency_ledger_v1';
 
 const PortfolioContext = createContext<PortfolioContextValue | null>(null);
 
@@ -42,25 +49,44 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     return INITIAL_HOLDINGS;
   });
 
-  const [cashReserve, setCashReserveState] = useState<number>(() => {
+  const [cashBalances, setCashBalances] = useState<CurrencyLedger>(() => {
+    try {
+      const storedLedger = localStorage.getItem(LEDGER_STORAGE_KEY);
+      if (storedLedger !== null) return validateCurrencyLedger(JSON.parse(storedLedger));
+    } catch {
+      // Corrupt ledger: require a safe explicit reset rather than misassigning money.
+    }
     try {
       const saved = localStorage.getItem(CASH_STORAGE_KEY);
-      if (saved) return Number(saved) || 350000;
-    } catch {}
-    return 350000;
+      if (saved !== null && saved.trim() !== '') {
+        return migrateLegacyInrCash(Number(saved));
+      }
+    } catch {
+      // Fall back to documented demo cash only when there is no valid stored ledger.
+    }
+    return migrateLegacyInrCash(350000);
   });
+  const cashReserve = cashBalances.INR;
+
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(holdings)); } catch {}
+  }, [holdings]);
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(holdings));
-    } catch {}
-  }, [holdings]);
+      localStorage.setItem(LEDGER_STORAGE_KEY, JSON.stringify(cashBalances));
+      localStorage.setItem(CASH_STORAGE_KEY, String(cashBalances.INR));
+    } catch {
+      // Browsers may deny storage; values continue in memory only.
+    }
+  }, [cashBalances]);
+
+  function setCurrencyCash(currency: CashCurrency, amount: number) {
+    setCashBalances(previous => updateCurrencyCash(previous, currency, amount));
+  }
 
   function setCashReserve(amount: number) {
-    setCashReserveState(amount);
-    try {
-      localStorage.setItem(CASH_STORAGE_KEY, String(amount));
-    } catch {}
+    setCurrencyCash('INR', amount);
   }
 
   function addHolding(item: Omit<PortfolioHolding, 'id'>) {
@@ -84,7 +110,8 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
 
   function resetToSampleHoldings() {
     setHoldings(INITIAL_HOLDINGS);
-    setCashReserve(350000);
+    // Demo reset must not retain unrelated USD or USDT cash from the prior ledger.
+    setCashBalances(migrateLegacyInrCash(350000));
   }
 
   function addOpportunityToPortfolio(opp: MarketOpportunity) {
@@ -147,7 +174,9 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         summary,
         mixPlan,
         cashReserve,
+        cashBalances,
         setCashReserve,
+        setCurrencyCash,
         addHolding,
         updateHolding,
         removeHolding,

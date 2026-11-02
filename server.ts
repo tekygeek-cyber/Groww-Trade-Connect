@@ -21,6 +21,9 @@ import {
   saveDummyGtts,
 } from './server/groww-service';
 import { fetchHistoricalCandles, getSampleCandles } from './server/market-data';
+import { isPrivilegedMutationBlocked } from './server/security-policy.mjs';
+import { isAnonymousApiAllowed } from './server/api-access.mjs';
+import { isSameOrigin, makeClearSessionCookie, makeSessionCookie, readSessionCookie } from './server/session-policy.mjs';
 import { fetchMarketNewsForSignals, fetchMarketNews } from './server/news-service';
 import {
   getAllBrokersStatus,
@@ -47,7 +50,40 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws/ticks' });
 
-app.use(express.json());
+app.use(express.json({ limit: '256kb' }));
+const isSecureSession = process.env.NODE_ENV === 'production';
+const publicDemoJobs = new Set<string>();
+
+// Authenticate each request rather than trusting the existence of a global broker session.
+// Origin enforcement prevents cross-site form POSTs from using the caller's session cookie.
+app.use((req, res, next) => {
+  if (!req.path.toLowerCase().startsWith('/api/')) return next();
+  if (req.method !== 'GET' && req.method !== 'HEAD' &&
+      !isSameOrigin(req.get('origin'), req.get('host'), isSecureSession)) {
+    res.status(403).json({ detail: 'A matching request Origin is required' });
+    return;
+  }
+  const demoJobRead = req.method === 'GET' &&
+    req.path.startsWith('/api/signals/jobs/') &&
+    publicDemoJobs.has(req.path.slice('/api/signals/jobs/'.length));
+  if (!isAnonymousApiAllowed(req.method, req.path) && !demoJobRead &&
+      !readSession(readSessionCookie(req.headers.cookie))) {
+    res.status(401).json({ detail: 'An authenticated desk session is required' });
+    return;
+  }
+  next();
+});
+
+// Deny privileged mutations until caller-bound authorization is implemented.
+app.use((req, res, next) => {
+  if (isPrivilegedMutationBlocked(req.method, req.path)) {
+    res.status(503).json({
+      detail: 'Privileged state changes are disabled pending per-user authorization and audited broker reconciliation.',
+    });
+    return;
+  }
+  next();
+});
 
 // In-memory jobs store for scan background progress
 const jobs = new Map<string, ScanJob>();
@@ -117,26 +153,39 @@ app.post('/api/adapter/failover/recover', (req, res) => {
   }
 });
 
-app.get('/api/auth/status', (_req, res) => {
-  res.json(getPublicSessionStatus());
+app.get('/api/auth/status', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(getPublicSessionStatus(readSessionCookie(req.headers.cookie)));
 });
 
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const status = await loginGroww(req.body);
+    const { sessionId, ...status } = await loginGroww(
+      req.body,
+      readSessionCookie(req.headers.cookie)
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Set-Cookie', makeSessionCookie(sessionId, status.expires_at, isSecureSession));
     res.json(status);
   } catch (err: any) {
-    res.status(400).json({ detail: err.message || 'Login failed' });
+    const message = err instanceof Error ? err.message : 'Login failed';
+    const statusCode = message.includes('unreachable') ? 502
+      : message.includes('required') ? 400
+      : message.includes('already has an active') ? 409 : 401;
+    res.status(statusCode).json({ detail: message });
   }
 });
 
-app.post('/api/auth/logout', (_req, res) => {
-  clearSession();
-  res.json({ ok: true });
+app.post('/api/auth/logout', (req, res) => {
+  const revoked = clearSession(readSessionCookie(req.headers.cookie));
+  res.setHeader('Set-Cookie', makeClearSessionCookie(isSecureSession));
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, revoked });
 });
 
-app.get('/api/profile', (_req, res) => {
-  res.json(getProfile(false));
+app.get('/api/profile', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(getProfile(false, readSessionCookie(req.headers.cookie)));
 });
 
 app.get('/api/demo/profile', (_req, res) => {
@@ -190,15 +239,16 @@ app.get('/api/quotes/:market', async (req, res) => {
           change: Math.round(change * 100) / 100,
           changePct: Math.round(changePct * 100) / 100,
           previousClose: prev.close,
-          timestamp: Date.now(),
-          status: sample ? 'Sample' : 'Live',
+          // Historical daily close is delayed, not a live tick.
+          timestamp: sample ? Date.now() : Date.parse(last.date + 'T00:00:00.000Z'),
+          status: sample ? 'Sample' : 'Delayed',
           source,
         };
       }
     } catch {}
   }
 
-  res.json({ market, quotes, status: sample ? 'Sample' : 'Live' });
+  res.json({ market, quotes, status: sample ? 'Sample' : 'Delayed' });
 });
 
 // News & Search Grounded Catalysts for Signals
@@ -263,6 +313,7 @@ app.post(['/api/signals/scan', '/api/demo/scan'], async (req, res) => {
     error: null,
   };
   jobs.set(jobId, newJob);
+  if (sample) publicDemoJobs.add(jobId);
 
   res.json({ id: jobId, message: 'Scan job initiated' });
 
@@ -658,9 +709,9 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.join(__dirname, 'dist')));
+    app.use(express.static(path.resolve(process.cwd(), 'dist')));
     app.get('*', (_req, res) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+      res.sendFile(path.resolve(process.cwd(), 'dist', 'index.html'));
     });
   }
 

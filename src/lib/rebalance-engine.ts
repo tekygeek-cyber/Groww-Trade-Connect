@@ -1,4 +1,5 @@
 import type { MarketType } from '../types/market';
+import { isTrustedCompletedTrend, isTrustedMark } from './market-integrity';
 import type { PortfolioHolding } from '../types/portfolio';
 import type {
   TargetAllocation,
@@ -14,10 +15,14 @@ import type {
 } from '../types/rebalance';
 import { getConstituents } from '../data/universes';
 
-export const REBALANCE_RULE_VERSION = '2.0-audited';
+export const REBALANCE_RULE_VERSION = '3.0-data-integrity';
 export const DEFAULT_CASH_FLOOR_PCT = 5.0; // 5% minimum cash reserve
 export const DRIFT_TOLERANCE_PCT = 0.5; // Ignore drift under 0.5%
 export const FX_USD_TO_INR = 83.5;
+
+function needsCurrencyLedger(market: MarketType): boolean {
+  return market !== 'nifty';
+}
 
 export interface MarketQuoteInfo {
   price: number;
@@ -25,6 +30,11 @@ export interface MarketQuoteInfo {
   changePct: number;
   sma20?: number;
   sma50?: number;
+  smaSource?: 'completed_daily_candles';
+  smaAsOf?: string;
+  timestamp?: number;
+  status?: 'Live' | 'Delayed' | 'Closed' | 'Sample';
+  source?: string;
 }
 
 /**
@@ -132,18 +142,13 @@ export function calculatePortfolioScore(
         continue;
       }
 
-      // Signal state evaluation: SMA20 > SMA50 (bullish=1.0), SMA20 == SMA50 (neutral=0.5), SMA20 < SMA50 (bearish=0.0)
-      let s_i = 0.5;
-      if (typeof q.sma20 === 'number' && typeof q.sma50 === 'number') {
-        if (q.sma20 > q.sma50) s_i = 1.0;
-        else if (q.sma20 < q.sma50) s_i = 0.0;
-        else s_i = 0.5;
-      } else {
-        // Fallback to daily price trend if SMA not directly supplied
-        if (q.changePct > 0.2) s_i = 1.0;
-        else if (q.changePct < -0.2) s_i = 0.0;
-        else s_i = 0.5;
+      // Only completed, verified historical bars can contribute technical scores.
+      if (!isTrustedCompletedTrend(q, timestamp)) {
+        missingSignal = true;
+        unavailableReasons.push(`Verified 20/50-day SMA not available for ${h.ticker}`);
+        continue;
       }
+      const s_i = q.sma20! > q.sma50! ? 1.0 : q.sma20! < q.sma50! ? 0.0 : 0.5;
 
       const r_i = (positionValues[h.ticker] || 0) / riskyNav;
       techSum += r_i * s_i;
@@ -263,69 +268,10 @@ export function generatePresetTargets(
     }));
   }
 
-  if (preset === 'market_cap') {
-    // Weight by constituent market cap index
-    let totalCap = 0;
-    const caps = tickersToInclude.map((item, idx) => {
-      const c = constituentList.find((c) => c.ticker === item.ticker);
-      // Deterministic cap proxy: index weight from market cap rank
-      const capProxy = c ? Math.max(1000, 100000 - idx * 12000) : 50000;
-      totalCap += capProxy;
-      return capProxy;
-    });
-
-    let allocated = 0;
-    const result: TargetAllocation[] = [];
-    for (let i = 0; i < n; i++) {
-      const w = Math.floor(((caps[i] / totalCap) * riskyBudgetPct) * 100) / 100;
-      allocated += w;
-      result.push({
-        ticker: tickersToInclude[i].ticker,
-        name: tickersToInclude[i].name,
-        market,
-        targetWeightPct: w,
-        isLocked: false,
-      });
-    }
-    // Largest-remainder pass to match exact risky budget
-    const diff = Math.round((riskyBudgetPct - allocated) * 100) / 100;
-    if (result.length > 0) {
-      result[0].targetWeightPct = Math.round((result[0].targetWeightPct + diff) * 100) / 100;
-    }
-    return result;
-  }
-
-  if (preset === 'momentum_tilt') {
-    // Momentum / Alpha Tilt: m_i = clamp(return_or_trend, -0.5, +0.5); raw_i = 1 + alpha * m_i
-    const alpha = 0.4;
-    let sumRaw = 0;
-    const rawWeights = tickersToInclude.map((item) => {
-      const q = quotesMap[item.ticker];
-      const ret = (q?.changePct || 0) / 100;
-      const m_i = Math.max(-0.5, Math.min(0.5, ret));
-      const raw = 1 + alpha * m_i;
-      sumRaw += raw;
-      return raw;
-    });
-
-    let allocated = 0;
-    const result: TargetAllocation[] = [];
-    for (let i = 0; i < n; i++) {
-      const w = Math.floor(((rawWeights[i] / sumRaw) * riskyBudgetPct) * 100) / 100;
-      allocated += w;
-      result.push({
-        ticker: tickersToInclude[i].ticker,
-        name: tickersToInclude[i].name,
-        market,
-        targetWeightPct: w,
-        isLocked: false,
-      });
-    }
-    const diff = Math.round((riskyBudgetPct - allocated) * 100) / 100;
-    if (result.length > 0) {
-      result[0].targetWeightPct = Math.round((result[0].targetWeightPct + diff) * 100) / 100;
-    }
-    return result;
+  // Market capitalization and alpha presets require verified cross-sectional
+  // inputs. Do not fabricate cap rank proxies or momentum from a single tick.
+  if (preset === 'market_cap' || preset === 'momentum_tilt') {
+    return [];
   }
 
   // Custom fallback: equal weight
@@ -341,46 +287,43 @@ export function adjustSliderTargets(
   newWeight: number,
   targetCashPct: number = DEFAULT_CASH_FLOOR_PCT
 ): TargetAllocation[] {
-  const clampedNewWeight = Math.max(0, Math.min(100 - targetCashPct, newWeight));
-  const maxRiskyBudget = 100.0 - targetCashPct;
+  const original = currentTargets.map(t => ({ ...t }));
+  const budget = 100 - targetCashPct;
+  if (!Number.isFinite(newWeight) || !Number.isFinite(targetCashPct) ||
+      targetCashPct < 0 || targetCashPct > 100 ||
+      !original.some(t => t.ticker === changedTicker)) return original;
 
-  // Clone targets
-  const updated = currentTargets.map((t) =>
-    t.ticker === changedTicker ? { ...t, targetWeightPct: clampedNewWeight, isLocked: true } : { ...t }
-  );
+  const otherLocked = original.filter(t => t.isLocked && t.ticker !== changedTicker)
+    .reduce((sum, t) => sum + t.targetWeightPct, 0);
+  if (!Number.isFinite(otherLocked) || otherLocked > budget) return original;
+  const allowed = Math.max(0, budget - otherLocked);
+  const desired = Math.round(Math.max(0, Math.min(newWeight, allowed)) * 100) / 100;
+  const updated = original.map(t => t.ticker === changedTicker
+    ? { ...t, targetWeightPct: desired, isLocked: true } : t);
+  const lockedSum = updated.filter(t => t.isLocked)
+    .reduce((sum, t) => sum + t.targetWeightPct, 0);
+  const unlocked = updated.filter(t => !t.isLocked);
+  const remaining = Math.round((budget - lockedSum) * 100) / 100;
 
-  const lockedSum = updated
-    .filter((t) => t.isLocked)
-    .reduce((acc, t) => acc + t.targetWeightPct, 0);
-
-  const unlockedAssets = updated.filter((t) => !t.isLocked);
-  const remainingBudget = Math.max(0, maxRiskyBudget - lockedSum);
-
-  if (unlockedAssets.length > 0) {
-    const priorUnlockedSum = unlockedAssets.reduce((acc, t) => acc + t.targetWeightPct, 0);
-
-    let allocated = 0;
-    unlockedAssets.forEach((asset) => {
-      let portion = 0;
-      if (priorUnlockedSum > 0) {
-        portion = (asset.targetWeightPct / priorUnlockedSum) * remainingBudget;
-      } else {
-        portion = remainingBudget / unlockedAssets.length;
-      }
-      const rounded = Math.floor(portion * 100) / 100;
-      asset.targetWeightPct = rounded;
-      allocated += rounded;
-    });
-
-    // Residual reconciliation to ensure exact 100% total
-    const residual = Math.round((remainingBudget - allocated) * 100) / 100;
-    if (unlockedAssets.length > 0 && Math.abs(residual) > 0) {
-      unlockedAssets[0].targetWeightPct =
-        Math.round((unlockedAssets[0].targetWeightPct + residual) * 100) / 100;
-    }
+  // If all assets are locked, an edit that breaks normalization is rejected,
+  // rather than pretending that an invalid allocation is a valid target.
+  if (unlocked.length === 0) {
+    return Math.abs(remaining) <= 0.005 ? updated : original;
   }
 
-  return updated;
+  const priorSum = unlocked.reduce((sum, t) => sum + t.targetWeightPct, 0);
+  let allocated = 0;
+  for (const target of unlocked) {
+    const portion = priorSum > 0 ? target.targetWeightPct / priorSum : 1 / unlocked.length;
+    const rounded = Math.floor((portion * remaining + 1e-9) * 100) / 100;
+    target.targetWeightPct = rounded;
+    allocated += rounded;
+  }
+  const residual = Math.round((remaining - allocated) * 100) / 100;
+  unlocked[0].targetWeightPct = Math.round((unlocked[0].targetWeightPct + residual) * 100) / 100;
+  const finalSum = updated.reduce((sum, t) => sum + t.targetWeightPct, targetCashPct);
+  return updated.every(t => Number.isFinite(t.targetWeightPct) && t.targetWeightPct >= 0) &&
+    Math.abs(finalSum - 100) <= 0.011 ? updated : original;
 }
 
 /**
@@ -396,6 +339,46 @@ export function planRebalanceOrders(
 ): RebalancePlanProposal {
   const proposalId = 'prop-' + Math.random().toString(36).substring(2, 9);
   const createdAt = Date.now();
+
+  // Account cash is stored exclusively in INR. Never place USD/USDT/ETF
+  // orders against INR cash until per-currency ledgers and FX snapshots exist.
+  // A blocked plan returns N/A metrics rather than fabricated mixed-currency NAV.
+  const invalidTargets =
+    !Number.isFinite(targetCashPct) || targetCashPct < 0 || targetCashPct > 100 ||
+    targets.some(t => t.market !== market || !Number.isFinite(t.targetWeightPct) ||
+      t.targetWeightPct < 0 || t.targetWeightPct > 100) ||
+    new Set(targets.map(t => t.ticker)).size !== targets.length ||
+    Math.abs(targets.reduce((sum, t) => sum + t.targetWeightPct, targetCashPct) - 100) > 0.011;
+  const missingQuote = holdings.filter(h => h.market === market).some(h =>
+    h.shares > 0 && !isTrustedMark(quotesMap[h.ticker], createdAt)) ||
+    targets.filter(t => t.targetWeightPct > 0).some(t =>
+      !isTrustedMark(quotesMap[t.ticker], createdAt));
+  const scopedHoldings = holdings.filter(h => h.market === market);
+  const invalidHoldings = scopedHoldings.some(h =>
+    !Number.isFinite(h.shares) || h.shares < 0) ||
+    new Set(scopedHoldings.map(h => h.ticker)).size !== scopedHoldings.length ||
+    !Number.isFinite(cashBalance) || cashBalance < 0;
+
+  if (needsCurrencyLedger(market) || invalidTargets || missingQuote || invalidHoldings) {
+    const reason = needsCurrencyLedger(market)
+      ? 'Rebalancing is paper-disabled for non-INR markets until currency-specific cash ledgers and FX conversion are implemented.'
+      : invalidTargets ? 'Target weights are invalid or do not sum to exactly 100% including cash.'
+      : missingQuote ? 'A verified, dated market price is missing or simulated; paper execution is blocked.'
+      : 'Cash or holdings contain invalid quantities.';
+    const unavailableScore: ScoreBreakdown = {
+      ...calculatePortfolioScore([], [], {}, 0, market, targetCashPct),
+      unavailableReasons: [reason],
+    };
+    return {
+      id: proposalId, createdAt, market,
+      feasibility: 'INFEASIBLE_CONSTRAINTS', feasibilityMessage: reason,
+      currentNav: 0, currentCash: 0, targetCashWeightPct: targetCashPct,
+      requiredCashFloor: 0, grossSalesProceeds: 0, grossBuyExpenditure: 0,
+      totalEstimatedFees: 0, projectedCashAfterFills: 0, projectedNavAfterCosts: 0,
+      orders: [], buyCount: 0, sellCount: 0,
+      currentScore: unavailableScore, projectedScore: null, residualDrift: 0,
+    };
+  }
 
   // Filter holdings for this market
   const marketHoldings = holdings.filter((h) => h.market === market);
@@ -547,7 +530,9 @@ export function planRebalanceOrders(
 
     // If required cash breaches spendable, scale down
     if (notional + fee > spendableCash) {
-      const affordableNotional = spendableCash / 1.0005;
+      // Reserve both the percentage fee and the minimum fixed fee, plus
+      // one cent of rounding headroom, before sizing the final whole lot.
+      const affordableNotional = Math.max(0, (spendableCash - 1.01) / 1.0005);
       if (market === 'crypto') {
         buyQty = Math.floor((affordableNotional / executionPrice) * 1000) / 1000;
       } else {
@@ -557,7 +542,8 @@ export function planRebalanceOrders(
       fee = Math.max(1, Math.round(notional * 0.0005 * 100) / 100);
     }
 
-    if (buyQty > 0) {
+    if (buyQty > 0 && Number.isFinite(notional) && Number.isFinite(fee) &&
+        notional + fee <= spendableCash + 0.00001) {
       grossBuyExpenditure += notional;
       totalEstimatedFees += fee;
       conditionalCash -= notional + fee;
@@ -590,10 +576,10 @@ export function planRebalanceOrders(
   let feasibility: PlanFeasibility = 'FEASIBLE';
   let feasibilityMessage = 'All proposed orders are feasible within account liquidity and reserve policy.';
 
-  if (conditionalCash < requiredCashFloor - 1.0) {
+  if (conditionalCash < requiredCashFloor - 0.005) {
     feasibility = 'INFEASIBLE_CASH_FLOOR';
     feasibilityMessage = `Projected cash (${Math.round(conditionalCash)}) falls below the required ${targetCashPct}% reserve floor (${Math.round(requiredCashFloor)}).`;
-  } else if (orders.length === 0 && analysisList.some((a) => Math.abs(a.driftPct) > DRIFT_TOLERANCE_PCT)) {
+  } else if (orders.length === 0 && analysisList.some(a => Math.abs(a.driftPct) > DRIFT_TOLERANCE_PCT)) {
     feasibility = 'PARTIAL_FEASIBLE';
     feasibilityMessage = 'Residual drift exists, but whole lot sizes or cash reserve prevented further orders.';
   }
@@ -633,6 +619,12 @@ export function planRebalanceOrders(
     market,
     targetCashPct
   );
+  // Report the remaining drift honestly after whole-lot sizing and fees.
+  if (feasibility === 'FEASIBLE' &&
+      projectedScore.unroundedDriftD * 100 > DRIFT_TOLERANCE_PCT + 1e-6) {
+    feasibility = 'PARTIAL_FEASIBLE';
+    feasibilityMessage = 'Some target drift remains after lot sizing, fees, and cash reserve constraints.';
+  }
 
   return {
     id: proposalId,
@@ -664,12 +656,24 @@ export function planRebalanceOrders(
 export function reconcilePaperFills(
   currentHoldings: PortfolioHolding[],
   currentCash: number,
-  orders: ProposedRebalanceOrder[]
+  orders: ProposedRebalanceOrder[],
+  minimumCashAfter: number = 0
 ): {
   updatedHoldings: PortfolioHolding[];
   updatedCash: number;
   batchExecution: RebalanceBatchExecution;
 } {
+  if (!Number.isFinite(currentCash) || currentCash < 0 ||
+      !Number.isFinite(minimumCashAfter) || minimumCashAfter < 0) {
+    throw new Error('Invalid cash reserve for paper reconciliation');
+  }
+  const seenOrderIds = new Set<string>();
+  const seenHoldings = new Set<string>();
+  for (const h of currentHoldings) {
+    const key = `${h.market}:${h.ticker}`;
+    if (seenHoldings.has(key)) throw new Error('Duplicate portfolio positions must be consolidated before reconciliation');
+    seenHoldings.add(key);
+  }
   const batchId = 'batch-' + Math.random().toString(36).substring(2, 9);
   const authorizedAt = Date.now();
   const fills: ExecutionFillEvent[] = [];
@@ -682,6 +686,18 @@ export function reconcilePaperFills(
   let totalFeesCharged = 0;
 
   for (const ord of orders) {
+    if (seenOrderIds.has(ord.id) || !Number.isFinite(ord.quantityDelta) || ord.quantityDelta <= 0 ||
+        !Number.isFinite(ord.executionPrice) || ord.executionPrice <= 0 ||
+        !Number.isFinite(ord.orderNotional) || ord.orderNotional <= 0 ||
+        !Number.isFinite(ord.estimatedFee) || ord.estimatedFee < 0 ||
+        Math.abs(ord.orderNotional - ord.quantityDelta * ord.executionPrice) > 0.02) {
+      throw new Error('Invalid or duplicate paper fill order');
+    }
+    seenOrderIds.add(ord.id);
+    const held = holdingsMap.get(`${ord.market}:${ord.ticker}`);
+    if (ord.side === 'SELL' && (!held || held.shares + 1e-9 < ord.quantityDelta)) {
+      throw new Error('Paper order exceeds owned shares');
+    }
     const fillId = 'fill-' + Math.random().toString(36).substring(2, 9);
     fills.push({
       fillId,
@@ -703,7 +719,7 @@ export function reconcilePaperFills(
     if (ord.side === 'SELL') {
       newCash += ord.orderNotional - ord.estimatedFee;
       if (existing) {
-        existing.shares = Math.max(0, existing.shares - ord.quantityDelta);
+        existing.shares -= ord.quantityDelta;
       }
     } else {
       // BUY
@@ -725,6 +741,9 @@ export function reconcilePaperFills(
     }
   }
 
+  if (newCash < minimumCashAfter - 0.005) {
+    throw new Error('Paper batch violates the required cash reserve');
+  }
   // Filter out any positions with 0 shares
   const updatedHoldings = Array.from(holdingsMap.values()).filter((h) => h.shares > 0);
 

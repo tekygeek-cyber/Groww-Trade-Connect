@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Scale,
   RefreshCw,
@@ -22,7 +22,8 @@ import {
   History,
   Check,
 } from 'lucide-react';
-import type { MarketType } from '../types/market';
+import type { Candle, MarketType } from '../types/market';
+import { deriveCompletedDailyTrend, type CompletedDailyTrend } from '../lib/market-integrity';
 import type { PortfolioHolding } from '../types/portfolio';
 import type {
   TargetAllocation,
@@ -51,6 +52,12 @@ import { MARKETS } from '../data/universes';
 
 const AUDIT_STORAGE_KEY = 'groww_rebalance_audit_snapshots_v2';
 
+function canExecutePaperPlan(plan: RebalancePlanProposal): boolean {
+  return plan.orders.length > 0 &&
+    (plan.feasibility === 'FEASIBLE' || plan.feasibility === 'PARTIAL_FEASIBLE');
+}
+
+
 export function PortfolioRebalancePanel({
   initialMarket,
   selectedCurrency,
@@ -61,9 +68,10 @@ export function PortfolioRebalancePanel({
   formatCurrency: (amountINR: number) => string;
 }) {
   const { holdings, cashReserve, setCashReserve, importHoldings } = usePortfolio();
-  const { getQuote, market: globalMarket } = useMarketQuotes();
+  const { getQuote, market: globalMarket, sample } = useMarketQuotes();
 
   const [activeMarket, setActiveMarket] = useState<MarketType>(initialMarket);
+  const executedProposals = useRef(new Set<string>());
   const [activePreset, setActivePreset] = useState<RebalancePreset>('equal_weight');
   const [targetCashPct, setTargetCashPct] = useState<number>(DEFAULT_CASH_FLOOR_PCT);
   const [targets, setTargets] = useState<TargetAllocation[]>([]);
@@ -91,6 +99,48 @@ export function PortfolioRebalancePanel({
     } catch {}
   }, [auditHistory]);
 
+  // Technical factors are computed from provider-sourced completed daily bars,
+  // never from same-day percentage changes or simulated prices.
+  const [dailyTrends, setDailyTrends] = useState<Record<string, CompletedDailyTrend>>({});
+  const scopedSymbols = useMemo(() => {
+    const symbols = new Set<string>([
+      ...holdings.filter(h => h.market === activeMarket).map(h => h.ticker),
+      ...targets.filter(t => t.market === activeMarket).map(t => t.ticker),
+    ]);
+    return [...symbols].sort().join(',');
+  }, [holdings, targets, activeMarket]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setDailyTrends({});
+    if (sample || activeMarket !== globalMarket) return () => controller.abort();
+    const symbols = scopedSymbols.split(',').filter(Boolean).slice(0, 12);
+    if (!symbols.length) return () => controller.abort();
+
+    Promise.all(symbols.map(async ticker => {
+      try {
+        const response = await fetch(
+          `/api/candles/${activeMarket}/${encodeURIComponent(ticker)}`,
+          { cache: 'no-store', signal: controller.signal }
+        );
+        if (!response.ok) return null;
+        const body: { candles?: Candle[]; source?: string } = await response.json();
+        const trend = deriveCompletedDailyTrend(
+          body.candles || [], body.source || '', new Date(), activeMarket
+        );
+        return trend ? { ticker, trend } : null;
+      } catch {
+        return null; // Missing provider data yields N/A, never a synthesized score.
+      }
+    })).then(results => {
+      if (controller.signal.aborted) return;
+      const next: Record<string, CompletedDailyTrend> = {};
+      for (const item of results) if (item) next[item.ticker] = item.trend;
+      setDailyTrends(next);
+    });
+    return () => controller.abort();
+  }, [activeMarket, globalMarket, sample, scopedSymbols]);
+
   // Construct quote map for holdings & targets
   const quotesMap = useMemo(() => {
     const map: Record<string, MarketQuoteInfo> = {};
@@ -106,16 +156,19 @@ export function PortfolioRebalancePanel({
           price: q.price,
           change: q.change,
           changePct: q.changePct,
-          sma20: q.price * (1 + (q.changePct > 0 ? 0.015 : -0.015)),
-          sma50: q.price * (1 + (q.changePct > 0 ? -0.01 : 0.01)),
+          timestamp: q.timestamp,
+          status: q.status,
+          source: q.source,
+          ...dailyTrends[ticker],
         };
       }
     }
     return map;
-  }, [holdings, targets, getQuote]);
+  }, [holdings, targets, getQuote, dailyTrends]);
 
   // Initialize or update targets when active market or preset changes
   useEffect(() => {
+    if (activePreset === 'custom') return; // Preserve edited slider targets.
     const newTargets = generatePresetTargets(
       holdings,
       activeMarket,
@@ -154,10 +207,12 @@ export function PortfolioRebalancePanel({
 
   // Reset to current preset
   function handleResetPreset() {
+    const preset = activePreset === 'custom' ? 'equal_weight' : activePreset;
+    setActivePreset(preset);
     const reset = generatePresetTargets(
       holdings,
       activeMarket,
-      activePreset,
+      preset,
       quotesMap,
       targetCashPct
     );
@@ -166,15 +221,17 @@ export function PortfolioRebalancePanel({
 
   // Execute paper rebalance batch
   function handleExecuteBatch() {
-    if (proposal.orders.length === 0) return;
+    if (!canExecutePaperPlan(proposal) || executedProposals.current.has(proposal.id)) return;
 
     const { updatedHoldings, updatedCash, batchExecution } = reconcilePaperFills(
       holdings,
       cashReserve,
-      proposal.orders
+      proposal.orders,
+      proposal.requiredCashFloor
     );
+    executedProposals.current.add(proposal.id);
 
-    // Update global portfolio context atomically
+    // Update global portfolio context (two independent state updates)
     importHoldings(updatedHoldings);
     setCashReserve(updatedCash);
 
@@ -291,7 +348,7 @@ export function PortfolioRebalancePanel({
         <div className="rounded-lg border border-border bg-surface p-4">
           <p className="text-xs font-medium uppercase tracking-wider text-muted">Scope Portfolio NAV</p>
           <p className="num mt-2 text-2xl font-bold text-fg">
-            {formatCurrency(proposal.currentNav)}
+            {proposal.feasibility === 'INFEASIBLE_CONSTRAINTS' ? 'N/A' : formatCurrency(proposal.currentNav)}
           </p>
           <div className="mt-2 flex items-center justify-between text-xs text-muted">
             <span>Invested: {formatCurrency(proposal.currentNav - proposal.currentCash)}</span>
@@ -302,7 +359,7 @@ export function PortfolioRebalancePanel({
         <div className="rounded-lg border border-border bg-surface p-4">
           <p className="text-xs font-medium uppercase tracking-wider text-muted">Available Cash Reserve</p>
           <p className="num mt-2 text-2xl font-bold text-fg">
-            {formatCurrency(proposal.currentCash)}
+            {proposal.feasibility === 'INFEASIBLE_CONSTRAINTS' ? 'N/A' : formatCurrency(proposal.currentCash)}
           </p>
           <div className="mt-2 flex items-center justify-between text-xs text-muted">
             <span>Policy Floor ({targetCashPct}%):</span>
@@ -365,7 +422,7 @@ export function PortfolioRebalancePanel({
           <div>
             <h3 className="text-base font-semibold text-fg">Target Allocation Model</h3>
             <p className="mt-0.5 text-xs text-muted">
-              Select an algorithmic preset or lock custom percentage weights with auto-normalization to 100%.
+              Equal Weight and custom allocations are available. Market Cap and Momentum require verified inputs.
             </p>
           </div>
 
@@ -385,25 +442,17 @@ export function PortfolioRebalancePanel({
               </button>
               <button
                 type="button"
-                onClick={() => setActivePreset('market_cap')}
-                className={
-                  'rounded px-3 py-1 transition-colors ' +
-                  (activePreset === 'market_cap'
-                    ? 'bg-primary text-primary-fg font-semibold'
-                    : 'text-muted hover:text-fg')
-                }
+                disabled
+                title="Unavailable until verified constituent market capitalizations are integrated"
+                className="rounded px-3 py-1 text-muted/50 cursor-not-allowed"
               >
                 Market Cap
               </button>
               <button
                 type="button"
-                onClick={() => setActivePreset('momentum_tilt')}
-                className={
-                  'rounded px-3 py-1 transition-colors ' +
-                  (activePreset === 'momentum_tilt'
-                    ? 'bg-primary text-primary-fg font-semibold'
-                    : 'text-muted hover:text-fg')
-                }
+                disabled
+                title="Unavailable until validated momentum windows and lookback datasets are integrated"
+                className="rounded px-3 py-1 text-muted/50 cursor-not-allowed"
               >
                 Momentum / Alpha Tilt
               </button>
@@ -582,7 +631,7 @@ export function PortfolioRebalancePanel({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-semibold text-fg">Portfolio Core Values Score (v2.0)</h3>
+              <h3 className="text-base font-semibold text-fg">Portfolio Core Values Score (v3.0)</h3>
               <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
                 Multi-Factor Matrix
               </span>
@@ -619,6 +668,11 @@ export function PortfolioRebalancePanel({
           </div>
         </div>
 
+        {proposal.currentScore.unavailableReasons.length > 0 && (
+          <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400" role="status">
+            Incomplete score: {proposal.currentScore.unavailableReasons.slice(0, 3).join('; ')}
+          </div>
+        )}
         {/* 3 Factor Breakdown Cards */}
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           {/* Factor 1: Allocation Score */}
@@ -725,10 +779,10 @@ export function PortfolioRebalancePanel({
 
             <button
               type="button"
-              disabled={proposal.orders.length === 0 || proposal.feasibility === 'INFEASIBLE_CASH_FLOOR'}
+              disabled={!canExecutePaperPlan(proposal)}
               onClick={handleExecuteBatch}
               className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold shadow-sm transition-colors ${
-                proposal.orders.length === 0 || proposal.feasibility === 'INFEASIBLE_CASH_FLOOR'
+                !canExecutePaperPlan(proposal)
                   ? 'border border-border bg-surface-2 text-muted cursor-not-allowed'
                   : 'bg-primary text-primary-fg hover:opacity-90 active:scale-95'
               }`}
@@ -744,7 +798,8 @@ export function PortfolioRebalancePanel({
             <CheckCircle2 className="size-6 text-emerald-400 mx-auto mb-2" />
             <p className="font-semibold text-fg">Portfolio In Alignment</p>
             <p className="mt-1">
-              No orders required. All positions are within the {DRIFT_TOLERANCE_PCT}% drift tolerance threshold.
+              {proposal.feasibility === 'INFEASIBLE_CONSTRAINTS' ? proposal.feasibilityMessage
+                : `No orders proposed; drift may be within ${DRIFT_TOLERANCE_PCT}% tolerance or constrained by lot sizing.`}
             </p>
           </div>
         ) : (

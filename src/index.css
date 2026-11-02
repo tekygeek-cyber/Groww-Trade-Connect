@@ -96,6 +96,70 @@
   animation: flash-down 1.2s ease-out;
 }
 
+/* Research terminal design layer. Data and execution warnings always remain visible. */
+.desk-shell {
+  background:
+    radial-gradient(ellipse 52rem 32rem at 10% -12%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 74%),
+    radial-gradient(ellipse 56rem 28rem at 100% 0%, rgba(52, 80, 115, .09), transparent 75%),
+    var(--bg);
+}
+.desk-overview {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--surface) 97%, var(--accent)), var(--surface)),
+    var(--surface);
+  box-shadow: 0 16px 44px rgba(0,0,0,.15), inset 0 1px 0 rgba(255,255,255,.025);
+}
+.desk-state-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .5rem .7rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-2) 80%, transparent);
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: var(--fg);
+  white-space: nowrap;
+}
+.desk-tabbar {
+  scrollbar-color: var(--line) transparent;
+  scrollbar-width: thin;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+.desk-tab {
+  scroll-snap-align: start;
+  border-radius: .7rem;
+  outline-offset: 3px;
+}
+.desk-tab-active {
+  box-shadow: 0 3px 14px color-mix(in srgb, var(--accent) 17%, transparent);
+}
+.desk-panel {
+  animation: desk-panel-appear .22s ease-out both;
+  contain: layout;
+}
+@keyframes desk-panel-appear {
+  from { opacity: .4; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.desk-panel :is(article,section) { min-width: 0; }
+.desk-shell :is(button,a,input,select,textarea):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.desk-shell :is(button,select):disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+.desk-shell table { font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .desk-overview { border-radius: .85rem; }
+  .desk-panel { animation: none; }
+}
+
 /* Official Google Sign-In Material Button (Dark Theme) */
 .gsi-material-button {
   -moz-user-select: none;

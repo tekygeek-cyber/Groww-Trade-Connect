@@ -12,6 +12,9 @@ export default function App() {
   const [sample, setSample] = useState<boolean>(false);
 
   useEffect(() => {
+    // Migrate away from old plaintext browser credential persistence,
+    // including when an active session skips the login screen.
+    try { localStorage.removeItem('groww-connect-login'); } catch {}
     // Check url search params first
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);

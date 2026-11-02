@@ -1,19 +1,19 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
-import { LogOut, Activity, Radio, Clock, ShieldCheck, CheckSquare, Square, Newspaper, Sparkles, Cpu } from 'lucide-react';
+import { useEffect, useMemo, useState, useRef, lazy, Suspense, type KeyboardEvent } from 'react';
+import { LogOut, Activity, Radio, Clock, ShieldCheck, CheckSquare, Square, Newspaper, Sparkles, Cpu, LayoutDashboard, AlertTriangle } from 'lucide-react';
 import { MarketSelector } from './market-selector';
 import { AccentSwitch } from './accent';
 import { Wordmark } from './wordmark';
-import { StrategiesPanel } from './strategies-panel';
-import { AlgoSignalsPanel } from './algo-signals';
-import { GttPanel } from './gtt-panel';
-import { AlertsPanel } from './alerts-panel';
-import { PortfolioPanel } from './portfolio-panel';
+
+
+
+
+
 import { SignalNewsPanel } from './signal-news-panel';
-import { BrokerStatusModal } from './broker-status-modal';
-import { MarketHeatmap } from './market-heatmap';
-import { MarketHealth } from './market-health';
-import { MarketNewsPanel } from './market-news-panel';
-import { LivelinessModal } from './liveliness-modal';
+
+
+
+
+
 import { useMarketQuotes } from '../lib/quotes-context';
 import {
   api,
@@ -31,6 +31,33 @@ import {
   type SimResult,
 } from '../lib/api';
 import { MARKETS } from '../data/universes';
+
+// Split high-cost workspaces into on-demand chunks.
+const StrategiesPanel = lazy(() => import('./strategies-panel').then(m => ({ default: m.StrategiesPanel })));
+const AlgoSignalsPanel = lazy(() => import('./algo-signals').then(m => ({ default: m.AlgoSignalsPanel })));
+const GttPanel = lazy(() => import('./gtt-panel').then(m => ({ default: m.GttPanel })));
+const AlertsPanel = lazy(() => import('./alerts-panel').then(m => ({ default: m.AlertsPanel })));
+const PortfolioPanel = lazy(() => import('./portfolio-panel').then(m => ({ default: m.PortfolioPanel })));
+const MarketHeatmap = lazy(() => import('./market-heatmap').then(m => ({ default: m.MarketHeatmap })));
+const MarketHealth = lazy(() => import('./market-health').then(m => ({ default: m.MarketHealth })));
+const MarketNewsPanel = lazy(() => import('./market-news-panel').then(m => ({ default: m.MarketNewsPanel })));
+const BrokerStatusModal = lazy(() => import('./broker-status-modal').then(m => ({ default: m.BrokerStatusModal })));
+const LivelinessModal = lazy(() => import('./liveliness-modal').then(m => ({ default: m.LivelinessModal })));
+
+const TABS = ['signals','news','heatmap','health','portfolio','strategies','algo','gtt','alerts','user'] as const;
+type DeskTab = typeof TABS[number];
+const TAB_DETAILS: Record<DeskTab,{title:string;subtitle:string}> = {
+  signals:{title:'Signal intelligence',subtitle:'Scan market setups and review signal evidence.'},
+  news:{title:'Market news',subtitle:'Investigate catalysts and events before making decisions.'},
+  heatmap:{title:'Market landscape',subtitle:'Explore market breadth and concentration.'},
+  health:{title:'Data health',subtitle:'Review provider freshness and feed telemetry.'},
+  portfolio:{title:'Portfolio workspace',subtitle:'Inspect indicative holdings and model allocations.'},
+  strategies:{title:'Strategy lab',subtitle:'Research and backtest rule-based ideas.'},
+  algo:{title:'Paper order lab',subtitle:'Review simulated triggers; live broker execution remains disabled.'},
+  gtt:{title:'GTT simulations',subtitle:'Explore conditional orders without submitting trades.'},
+  alerts:{title:'Alert center',subtitle:'Monitor configured research alerts.'},
+  user:{title:'Workspace settings',subtitle:'View the active session and available services.'},
+};
 
 const fieldClass =
   'h-11 w-full rounded-lg border border-border bg-bg px-3 text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-primary';
@@ -52,7 +79,7 @@ const PRODUCT_LABEL: Record<string, string> = {
 
 export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => void }) {
   const { market, quoteStatus, dataSourceLabel, sessionClock } = useMarketQuotes();
-  const [tab, setTab] = useState<'user' | 'signals' | 'news' | 'heatmap' | 'health' | 'portfolio' | 'strategies' | 'algo' | 'gtt' | 'alerts'>('signals');
+  const [tab, setTab] = useState<DeskTab>('signals');
   const [session, setSession] = useState<SessionStatus | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -62,6 +89,16 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
   const [failoverCount, setFailoverCount] = useState(0);
 
   const mktConfig = MARKETS[market];
+  const activeSection = TAB_DETAILS[tab];
+  function onTabKeyboard(event: KeyboardEvent<HTMLDivElement>) {
+    if (!['ArrowRight','ArrowLeft','Home','End'].includes(event.key)) return;
+    event.preventDefault();
+    const index = TABS.indexOf(tab);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? TABS.length - 1
+      : (index + (event.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length;
+    setTab(TABS[next]);
+    document.getElementById(`tab-${TABS[next]}`)?.focus();
+  }
 
   useEffect(() => {
     let cancel = false;
@@ -123,12 +160,12 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
   }
 
   return (
-    <div className="min-h-screen bg-bg text-fg">
+    <div className="desk-shell min-h-screen bg-bg text-fg">
       {/* Top Bar Header following strict one-row 3-zone contract */}
-      <header className="sticky top-0 z-20 border-b border-border bg-bg/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
+      <header className="sticky top-0 z-20 border-b border-border bg-bg/90 backdrop-blur-xl shadow-[0_12px_32px_rgba(0,0,0,0.16)]">
+        <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-4 px-4 py-3 lg:px-8">
           {/* Zone 1: Wordmark & Brand Title */}
-          <div className="flex items-center gap-4">
+          <div className="flex min-w-0 max-w-full items-center gap-3 overflow-x-auto sm:gap-4">
             <Wordmark compact market={market} />
             <div className="hidden lg:block h-5 w-px bg-border" />
             {/* Market Selector */}
@@ -175,12 +212,12 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
                   ? 'border-amber-500/40 bg-amber-500/10 text-amber-400 animate-pulse'
                   : 'border-border bg-surface text-fg hover:bg-surface-2'
               }`}
-              title="Inspect live stream health, latencies, auto-failover, and market routing"
+              title="Inspect reported provider telemetry, latency and feed routing"
             >
               <Activity className={`size-3 ${failoverCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`} />
               <span className="hidden sm:inline">Liveliness:</span>
               <span className={`font-semibold ${failoverCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                {failoverCount > 0 ? `⚠️ ${failoverCount} Feed Failed-Over` : 'Live & Routed'}
+                {failoverCount > 0 ? `${failoverCount} failover alerts` : 'Feed telemetry'}
               </span>
             </button>
 
@@ -215,10 +252,31 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
       </header>
 
       {/* Main Content Area */}
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      <main className="mx-auto max-w-[1500px] px-4 py-6 lg:px-8 lg:py-8">
+        <section className="desk-overview relative mb-5 overflow-hidden rounded-2xl border border-border bg-surface p-5 sm:p-6" aria-label="Workspace overview">
+          <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+          <div className="relative flex flex-wrap items-start justify-between gap-5">
+            <div className="max-w-2xl">
+              <p className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary"><LayoutDashboard className="size-3.5" /> Trade Connect / Research workspace</p>
+              <h1 className="text-2xl font-semibold tracking-tight text-fg sm:text-3xl">{activeSection.title}</h1>
+              <p className="mt-2 text-sm leading-relaxed text-muted">{activeSection.subtitle}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="desk-state-pill"><span className={`size-1.5 rounded-full ${sample ? 'bg-amber-400' : 'bg-primary'}`} />{sample ? 'Sample workspace' : 'Authenticated research'}</span>
+              <span className="desk-state-pill"><ShieldCheck className="size-3.5" />Paper trading only</span>
+              <span className="desk-state-pill"><Radio className="size-3.5" />Quotes: {quoteStatus}</span>
+            </div>
+          </div>
+          <div className="relative mt-5 flex flex-wrap gap-x-5 gap-y-2 border-t border-border/70 pt-4 text-xs text-muted">
+            <span>Universe <strong className="ml-1 font-medium text-fg">{mktConfig.label}</strong></span>
+            <span>Currency <strong className="ml-1 font-medium text-fg">{mktConfig.currency}</strong></span>
+            <span>Trading route <strong className="ml-1 font-medium text-watch">Not enabled</strong></span>
+          </div>
+        </section>
         {sample ? (
-          <p className="note-watch mb-5 rounded-lg border bg-surface px-4 py-2.5 text-xs text-watch">
-            Sample mode active. Quotes and indicators are calculated from realistic sample tapes without API keys.
+          <p className="note-watch mb-5 flex items-start gap-2 rounded-xl border bg-surface px-4 py-3 text-xs text-watch" role="status">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            Sample mode: prices and indicators are illustrative, not live or executable.
           </p>
         ) : session?.expires_at ? (
           <p className="mb-5 rounded-lg border border-border bg-surface px-4 py-2.5 text-xs text-muted">
@@ -228,7 +286,7 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
         ) : null}
 
         {/* Tab Navigation */}
-        <div role="tablist" aria-label="Desk tabs" className="flex flex-wrap gap-1.5 border-b border-border pb-3">
+        <div role="tablist" aria-label="Desk tabs" onKeyDown={onTabKeyboard} className="desk-tabbar flex gap-2 overflow-x-auto border-b border-border pb-3">
           <TabButton id="signals" selected={tab === 'signals'} onSelect={() => setTab('signals')} label="Signals" />
           <TabButton id="news" selected={tab === 'news'} onSelect={() => setTab('news')} label="Market News" />
           <TabButton id="heatmap" selected={tab === 'heatmap'} onSelect={() => setTab('heatmap')} label="Market Heatmap" />
@@ -241,56 +299,90 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
           <TabButton id="user" selected={tab === 'user'} onSelect={() => setTab('user')} label="User" />
         </div>
 
-        {/* Tab Panels */}
-        <div className="mt-6" role="tabpanel" id="panel-signals" hidden={tab !== 'signals'}>
-          <SignalsPanel sample={sample} />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-news" hidden={tab !== 'news'}>
-          <MarketNewsPanel market={market} />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-heatmap" hidden={tab !== 'heatmap'}>
-          <MarketHeatmap />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-health" hidden={tab !== 'health'}>
-          <MarketHealth />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-portfolio" hidden={tab !== 'portfolio'}>
-          <PortfolioPanel />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-strategies" hidden={tab !== 'strategies'}>
-          <StrategiesPanel />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-algo" hidden={tab !== 'algo'}>
-          <AlgoSignalsPanel />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-gtt" hidden={tab !== 'gtt'}>
-          <GttPanel />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-alerts" hidden={tab !== 'alerts'}>
-          <AlertsPanel />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-user" hidden={tab !== 'user'}>
-          <UserPanel profile={profile} loading={profileLoading} error={profileError} />
-        </div>
+        {/* Inactive tabs are unmounted to avoid hidden provider calls and background work. */}
+        {tab === 'signals' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-signals" aria-labelledby="tab-signals">
+            <Suspense fallback={<DeskLoading label="signals" />}>
+              <SignalsPanel sample={sample} />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'news' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-news" aria-labelledby="tab-news">
+            <Suspense fallback={<DeskLoading label="news" />}>
+              <MarketNewsPanel market={market} />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'heatmap' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-heatmap" aria-labelledby="tab-heatmap">
+            <Suspense fallback={<DeskLoading label="heatmap" />}>
+              <MarketHeatmap />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'health' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-health" aria-labelledby="tab-health">
+            <Suspense fallback={<DeskLoading label="health" />}>
+              <MarketHealth />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'portfolio' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-portfolio" aria-labelledby="tab-portfolio">
+            <Suspense fallback={<DeskLoading label="portfolio" />}>
+              <PortfolioPanel />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'strategies' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-strategies" aria-labelledby="tab-strategies">
+            <Suspense fallback={<DeskLoading label="strategies" />}>
+              <StrategiesPanel />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'algo' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-algo" aria-labelledby="tab-algo">
+            <Suspense fallback={<DeskLoading label="algo" />}>
+              <AlgoSignalsPanel />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'gtt' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-gtt" aria-labelledby="tab-gtt">
+            <Suspense fallback={<DeskLoading label="gtt" />}>
+              <GttPanel />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'alerts' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-alerts" aria-labelledby="tab-alerts">
+            <Suspense fallback={<DeskLoading label="alerts" />}>
+              <AlertsPanel />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'user' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-user" aria-labelledby="tab-user">
+            <Suspense fallback={<DeskLoading label="user" />}>
+              <UserPanel profile={profile} loading={profileLoading} error={profileError} />
+            </Suspense>
+          </div>
+        )}
 
         {/* Broker Configuration and Liveliness Modals */}
-        <BrokerStatusModal isOpen={brokerModalOpen} onClose={() => setBrokerModalOpen(false)} />
-        <LivelinessModal
-          isOpen={livelinessModalOpen}
-          onClose={() => setLivelinessModalOpen(false)}
-          currentMarket={market}
-          onNavigateToHealthTab={() => setTab('health')}
-        />
-      </main>
+        {brokerModalOpen && <Suspense fallback={<DeskLoading label="broker status" />}><BrokerStatusModal isOpen={brokerModalOpen} onClose={() => setBrokerModalOpen(false)} /></Suspense>}
+        {livelinessModalOpen && (
+          <Suspense fallback={<DeskLoading label="feed telemetry" />}>
+            <LivelinessModal
+              isOpen={livelinessModalOpen}
+              onClose={() => setLivelinessModalOpen(false)}
+              currentMarket={market}
+              onNavigateToHealthTab={() => setTab('health')}
+            />
+          </Suspense>
+        )}      </main>
     </div>
   );
 }
@@ -311,18 +403,28 @@ function TabButton({
       type="button"
       role="tab"
       id={`tab-${id}`}
+      tabIndex={selected ? 0 : -1}
       aria-selected={selected}
       aria-controls={`panel-${id}`}
       className={
-        'h-10 rounded-lg px-4 text-xs font-semibold whitespace-nowrap transition-colors ' +
+        'desk-tab h-10 shrink-0 rounded-lg px-4 text-xs font-semibold whitespace-nowrap transition-all ' +
         (selected
-          ? 'bg-primary text-primary-fg shadow-sm'
-          : 'border border-border bg-surface text-fg hover:bg-surface-2')
+          ? 'desk-tab-active bg-primary text-primary-fg shadow-sm'
+          : 'border border-border/80 bg-surface/80 text-muted hover:bg-surface-2 hover:text-fg')
       }
       onClick={onSelect}
     >
       {label}
     </button>
+  );
+}
+
+function DeskLoading({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-xl border border-border bg-surface text-muted" role="status">
+      <span aria-hidden="true" className="size-8 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+      <span className="text-sm">Loading {label}…</span>
+    </div>
   );
 }
 
