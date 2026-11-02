@@ -12,7 +12,11 @@ const model = (a = 40, b = 55): TargetAllocation[] => [
   { ticker:'AAA', name:'A', market:'nifty', targetWeightPct:a, isLocked:false },
   { ticker:'BBB', name:'B', market:'nifty', targetWeightPct:b, isLocked:false },
 ];
-const quotes = { AAA: { price:100, change:1, changePct:1 }, BBB:{ price:100, change:-1, changePct:-1 } };
+const provenance = { timestamp: Date.now(), status: 'Delayed' as const, source: 'Daily candles: Stooq' };
+const quotes = {
+  AAA: { price:100, change:1, changePct:1, ...provenance },
+  BBB: { price:100, change:-1, changePct:-1, ...provenance },
+};
 
 test('locked slider clamps requested share to remaining available budget', () => {
   const t = model(47.5, 47.5); t[0].isLocked = true;
@@ -57,8 +61,8 @@ test('cash reserve is preserved after fees in generated paper proposals', () => 
   for (let cash = 0; cash <= 500; cash += 5) {
     for (const p of [10, 70, 100, 300]) {
       const customQuotes = {
-        AAA: { price:p, change:1, changePct:1 },
-        BBB: { price:p / 2, change:1, changePct:1 },
+        AAA: { price:p, change:1, changePct:1, ...provenance },
+        BBB: { price:p / 2, change:1, changePct:1, ...provenance },
       };
       const plan=planRebalanceOrders(portfolio,model(),customQuotes,cash,'nifty',5);
       if (plan.feasibility !== 'INFEASIBLE_CASH_FLOOR' &&
