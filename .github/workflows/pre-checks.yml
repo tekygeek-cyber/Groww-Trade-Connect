@@ -22,3 +22,5 @@ jobs:
         run: bun run test
       - name: Mocked Groww exchange tests
         run: bun run test:auth-integration
+      - name: Rebalance rule and cash invariant tests
+        run: bun run test:rebalance
