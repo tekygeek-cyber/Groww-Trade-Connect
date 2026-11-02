@@ -23,7 +23,7 @@ import {
 import { fetchHistoricalCandles, getSampleCandles } from './server/market-data';
 import { isPrivilegedMutationBlocked } from './server/security-policy.mjs';
 import { isAnonymousApiAllowed } from './server/api-access.mjs';
-import { isSameOrigin, makeClearSessionCookie, makeSessionCookie, readSessionCookie } from './server/session-policy.mjs';
+import { getConfiguredPublicOrigin, isSameOrigin, makeClearSessionCookie, makeSessionCookie, readSessionCookie } from './server/session-policy.mjs';
 import { getAiStatus,validateAiRequest,allowAiRequest,researchWithAi } from './server/ai/research-service.mjs';
 import { verifyKrakenSpotReadOnly } from './server/kraken/spot-readonly.mjs';
 import { parseRehearsalInput, runTradingRehearsal, readRehearsalAudits } from './server/trading/rehearsal';
@@ -55,6 +55,7 @@ const wss = new WebSocketServer({ server, path: '/ws/ticks' });
 
 app.use(express.json({ limit: '256kb' }));
 const isSecureSession = process.env.NODE_ENV === 'production';
+const configuredPublicOrigin = getConfiguredPublicOrigin(process.env);
 const publicDemoJobs = new Set<string>();
 
 // Authenticate each request rather than trusting the existence of a global broker session.
@@ -62,7 +63,7 @@ const publicDemoJobs = new Set<string>();
 app.use((req, res, next) => {
   if (!req.path.toLowerCase().startsWith('/api/')) return next();
   if (req.method !== 'GET' && req.method !== 'HEAD' &&
-      !isSameOrigin(req.get('origin'), req.get('host'), isSecureSession)) {
+      !isSameOrigin(req.get('origin'), req.get('host'), isSecureSession, configuredPublicOrigin)) {
     res.status(403).json({ detail: 'A matching request Origin is required' });
     return;
   }
