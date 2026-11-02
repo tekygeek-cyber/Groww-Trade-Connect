@@ -28,6 +28,7 @@ export function selectAgentContext(messages, maxChars) {
   for (let i = groups.length - 1; i >= 1; i--) {
     const candidate = [...essential, ...groups.slice(i).flat()];
     if (byteSize(candidate) <= maxChars) { current = candidate; }
+    else if (i === groups.length - 1) throw new Error('Latest complete tool batch exceeds context budget');
     else break;
   }
   return current;
