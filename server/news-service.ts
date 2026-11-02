@@ -40,16 +40,54 @@ function extractDomain(url: string): string {
   }
 }
 
+// In-memory 15-minute news cache per market & symbol set
+const newsCache = new Map<string, { data: MarketNewsResponse; timestamp: number }>();
+const NEWS_CACHE_TTL = 15 * 60 * 1000;
+
+function normalizeMarket(m: any): MarketType {
+  if (m === 'crypto') return 'crypto';
+  if (m === 'nasdaq') return 'nasdaq';
+  if (m === 'etfs' || m === 'etf') return 'etfs';
+  return 'nifty';
+}
+
+export async function fetchMarketNews(
+  rawMarket: MarketType = 'nifty',
+  symbols?: string[],
+  forceRefresh: boolean = false
+): Promise<MarketNewsResponse> {
+  const market = normalizeMarket(rawMarket);
+  const cleanSymbols = (symbols || [])
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean)
+    .slice(0, 8);
+
+  const targetSymbols = cleanSymbols.length > 0 ? cleanSymbols : getDefaultSymbols(market);
+  const cacheKey = `${market}:${targetSymbols.slice().sort().join(',')}`;
+
+  if (!forceRefresh) {
+    const cached = newsCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < NEWS_CACHE_TTL) {
+      return cached.data;
+    }
+  }
+
+  const result = await executeNewsQuery(targetSymbols, market);
+  newsCache.set(cacheKey, { data: result, timestamp: Date.now() });
+  return result;
+}
+
 export async function fetchMarketNewsForSignals(
   symbols: string[],
   market: MarketType = 'nifty'
 ): Promise<MarketNewsResponse> {
-  const cleanSymbols = symbols
-    .map((s) => s.trim().toUpperCase())
-    .filter(Boolean)
-    .slice(0, 8); // Focus on up to 8 symbols for fast, high-density analysis
+  return fetchMarketNews(market, symbols, false);
+}
 
-  const targetSymbols = cleanSymbols.length > 0 ? cleanSymbols : getDefaultSymbols(market);
+async function executeNewsQuery(
+  targetSymbols: string[],
+  market: MarketType = 'nifty'
+): Promise<MarketNewsResponse> {
   const mktConfig = MARKETS[market] || MARKETS.nifty;
 
   const apiKey = process.env.GEMINI_API_KEY;
@@ -184,14 +222,14 @@ Ensure every requested symbol has an entry in the "assets" list. Return ONLY val
 function getDefaultSymbols(market: MarketType): string[] {
   switch (market) {
     case 'crypto':
-      return ['BTC', 'ETH', 'SOL', 'BNB'];
+      return ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX'];
     case 'nasdaq':
-      return ['NVDA', 'AAPL', 'MSFT', 'TSLA'];
+      return ['NVDA', 'AAPL', 'MSFT', 'AMZN', 'GOOGL', 'META', 'TSLA', 'AVGO'];
     case 'etfs':
-      return ['NIFTYBEES', 'QQQ', 'SPY', 'GOLDBEES'];
+      return ['SPY', 'QQQ', 'IVV', 'SMH', 'GLD', 'NIFTYBEES', 'BANKBEES', 'GOLDBEES'];
     case 'nifty':
     default:
-      return ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY'];
+      return ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'BHARTIARTL', 'ICICIBANK', 'SBIN', 'LT'];
   }
 }
 
@@ -226,7 +264,8 @@ function generateDeskIntelligenceNews(symbols: string[], market: MarketType): Ma
       ? 'Broad market liquidity persists across equity benchmark and commodity hedges with tight tracking.'
       : 'Indian headline indices exhibit rotational breadth backed by domestic institutional liquidity and robust corporate order books.';
 
-  const summary = `Trading desk analysis for ${symbols.join(', ')}. Monitoring technical SMA crossover setups against macro newsflow, institutional order books, and earnings revisions across the ${MARKETS[market].label} universe.`;
+  const mktConfig = MARKETS[market] || MARKETS.nifty;
+  const summary = `Trading desk analysis for ${symbols.join(', ')}. Monitoring technical SMA crossover setups against macro newsflow, institutional order books, and earnings revisions across the ${mktConfig.label} universe.`;
 
   const sources: GroundingSource[] = getSampleSources(market);
 

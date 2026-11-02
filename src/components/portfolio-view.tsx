@@ -22,6 +22,7 @@ import {
   Upload,
   Info,
   Check,
+  Scale,
 } from 'lucide-react';
 import { usePortfolio } from '../lib/portfolio-context';
 import { useMarketQuotes } from '../lib/quotes-context';
@@ -30,6 +31,7 @@ import type { MarketType } from '../types/market';
 import type { PortfolioHolding, MarketOpportunity } from '../types/portfolio';
 import { SignalNewsPanel } from './signal-news-panel';
 import { GoogleSheetsModal } from './google-sheets-modal';
+import { PortfolioRebalancePanel } from './portfolio-rebalance-panel';
 import { FX_USD_TO_INR, convertToINR, convertToUSD } from '../lib/portfolio-engine';
 
 export function PortfolioView() {
@@ -48,7 +50,7 @@ export function PortfolioView() {
 
   const { getQuote, market: deskMarket } = useMarketQuotes();
 
-  const [activeTab, setActiveTab] = useState<'holdings' | 'mix'>('holdings');
+  const [activeTab, setActiveTab] = useState<'holdings' | 'mix' | 'rebalance'>('holdings');
   // Currency selection: INR (₹), USD ($), or USDT (₮)
   const [selectedCurrency, setSelectedCurrency] = useState<'INR' | 'USD' | 'USDT'>('INR');
   const [marketFilter, setMarketFilter] = useState<'all' | MarketType>('all');
@@ -370,6 +372,22 @@ export function PortfolioView() {
             Opportunity Mix ({notHeldOpportunities.length} Unheld High-Probability)
             <span className="rounded bg-primary/20 px-1.5 py-0.2 text-[10px] text-primary">
               +{mixPlan.projectedReturnPct}% Edge
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('rebalance')}
+            className={
+              'flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-semibold transition-colors ' +
+              (activeTab === 'rebalance'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted hover:text-fg')
+            }
+          >
+            <Scale className="size-4 text-primary" />
+            Rebalance Portfolio
+            <span className="rounded bg-primary/20 px-1.5 py-0.2 text-[10px] text-primary">
+              v2.0 Audited
             </span>
           </button>
         </div>
@@ -806,6 +824,15 @@ export function PortfolioView() {
             )}
           </div>
         </div>
+      )}
+
+      {/* TAB 3: Rebalance Portfolio Section */}
+      {activeTab === 'rebalance' && (
+        <PortfolioRebalancePanel
+          initialMarket={deskMarket}
+          selectedCurrency={selectedCurrency}
+          formatCurrency={formatVal}
+        />
       )}
 
       {/* Google Sheets Modal */}

@@ -10,6 +10,10 @@ import { AlertsPanel } from './alerts-panel';
 import { PortfolioPanel } from './portfolio-panel';
 import { SignalNewsPanel } from './signal-news-panel';
 import { BrokerStatusModal } from './broker-status-modal';
+import { MarketHeatmap } from './market-heatmap';
+import { MarketHealth } from './market-health';
+import { MarketNewsPanel } from './market-news-panel';
+import { LivelinessModal } from './liveliness-modal';
 import { useMarketQuotes } from '../lib/quotes-context';
 import {
   api,
@@ -48,14 +52,35 @@ const PRODUCT_LABEL: Record<string, string> = {
 
 export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => void }) {
   const { market, quoteStatus, dataSourceLabel, sessionClock } = useMarketQuotes();
-  const [tab, setTab] = useState<'user' | 'signals' | 'portfolio' | 'strategies' | 'algo' | 'gtt' | 'alerts'>('signals');
+  const [tab, setTab] = useState<'user' | 'signals' | 'news' | 'heatmap' | 'health' | 'portfolio' | 'strategies' | 'algo' | 'gtt' | 'alerts'>('signals');
   const [session, setSession] = useState<SessionStatus | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [brokerModalOpen, setBrokerModalOpen] = useState(false);
+  const [livelinessModalOpen, setLivelinessModalOpen] = useState(false);
+  const [failoverCount, setFailoverCount] = useState(0);
 
   const mktConfig = MARKETS[market];
+
+  useEffect(() => {
+    let cancel = false;
+    const checkFailover = () => {
+      api<any>('/api/adapter/liveliness')
+        .then((res) => {
+          if (!cancel && res?.systemOverview) {
+            setFailoverCount(res.systemOverview.activeFailoversCount || 0);
+          }
+        })
+        .catch(() => {});
+    };
+    checkFailover();
+    const interval = setInterval(checkFailover, 5000);
+    return () => {
+      cancel = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     let cancel = false;
@@ -141,6 +166,24 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
               </span>
             </div>
 
+            {/* Liveliness & Stream Telemetry Button */}
+            <button
+              type="button"
+              onClick={() => setLivelinessModalOpen(true)}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                failoverCount > 0
+                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-400 animate-pulse'
+                  : 'border-border bg-surface text-fg hover:bg-surface-2'
+              }`}
+              title="Inspect live stream health, latencies, auto-failover, and market routing"
+            >
+              <Activity className={`size-3 ${failoverCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`} />
+              <span className="hidden sm:inline">Liveliness:</span>
+              <span className={`font-semibold ${failoverCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                {failoverCount > 0 ? `⚠️ ${failoverCount} Feed Failed-Over` : 'Live & Routed'}
+              </span>
+            </button>
+
             {/* Broker API Manager Button */}
             <button
               type="button"
@@ -151,7 +194,7 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
               <Cpu className="size-3 text-primary" />
               <span className="hidden sm:inline">Broker:</span>
               <span className="font-semibold text-primary">
-                {market === 'nifty' ? 'Groww' : market === 'crypto' ? 'Kraken' : 'eToro'}
+                {market === 'nifty' ? 'Groww (NSE)' : market === 'crypto' ? 'Kraken (Crypto)' : 'eToro (NASDAQ)'}
               </span>
             </button>
           </div>
@@ -187,6 +230,9 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
         {/* Tab Navigation */}
         <div role="tablist" aria-label="Desk tabs" className="flex flex-wrap gap-1.5 border-b border-border pb-3">
           <TabButton id="signals" selected={tab === 'signals'} onSelect={() => setTab('signals')} label="Signals" />
+          <TabButton id="news" selected={tab === 'news'} onSelect={() => setTab('news')} label="Market News" />
+          <TabButton id="heatmap" selected={tab === 'heatmap'} onSelect={() => setTab('heatmap')} label="Market Heatmap" />
+          <TabButton id="health" selected={tab === 'health'} onSelect={() => setTab('health')} label="Market Health" />
           <TabButton id="portfolio" selected={tab === 'portfolio'} onSelect={() => setTab('portfolio')} label="Portfolio" />
           <TabButton id="strategies" selected={tab === 'strategies'} onSelect={() => setTab('strategies')} label="Strategies" />
           <TabButton id="algo" selected={tab === 'algo'} onSelect={() => setTab('algo')} label="Algo Signals" />
@@ -198,6 +244,18 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
         {/* Tab Panels */}
         <div className="mt-6" role="tabpanel" id="panel-signals" hidden={tab !== 'signals'}>
           <SignalsPanel sample={sample} />
+        </div>
+
+        <div className="mt-6" role="tabpanel" id="panel-news" hidden={tab !== 'news'}>
+          <MarketNewsPanel market={market} />
+        </div>
+
+        <div className="mt-6" role="tabpanel" id="panel-heatmap" hidden={tab !== 'heatmap'}>
+          <MarketHeatmap />
+        </div>
+
+        <div className="mt-6" role="tabpanel" id="panel-health" hidden={tab !== 'health'}>
+          <MarketHealth />
         </div>
 
         <div className="mt-6" role="tabpanel" id="panel-portfolio" hidden={tab !== 'portfolio'}>
@@ -223,6 +281,15 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
         <div className="mt-6" role="tabpanel" id="panel-user" hidden={tab !== 'user'}>
           <UserPanel profile={profile} loading={profileLoading} error={profileError} />
         </div>
+
+        {/* Broker Configuration and Liveliness Modals */}
+        <BrokerStatusModal isOpen={brokerModalOpen} onClose={() => setBrokerModalOpen(false)} />
+        <LivelinessModal
+          isOpen={livelinessModalOpen}
+          onClose={() => setLivelinessModalOpen(false)}
+          currentMarket={market}
+          onNavigateToHealthTab={() => setTab('health')}
+        />
       </main>
     </div>
   );

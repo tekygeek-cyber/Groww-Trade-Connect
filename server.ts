@@ -21,7 +21,7 @@ import {
   saveDummyGtts,
 } from './server/groww-service';
 import { fetchHistoricalCandles, getSampleCandles } from './server/market-data';
-import { fetchMarketNewsForSignals } from './server/news-service';
+import { fetchMarketNewsForSignals, fetchMarketNews } from './server/news-service';
 import {
   getAllBrokersStatus,
   configureKraken,
@@ -30,6 +30,15 @@ import {
   getAlgoOrders,
   cancelAlgoOrder,
 } from './server/broker-manager';
+import {
+  getLivelinessSnapshot,
+  pingProviders,
+  getMarketHeatmapData,
+  getFailoverSnapshot,
+  updateFailoverRule,
+  simulateFailover,
+  forceRecoverFailover,
+} from './server/data-adapter';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,6 +55,66 @@ const jobs = new Map<string, ScanJob>();
 // 1. Health & Session Auth Endpoints
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, timestamp: Date.now() });
+});
+
+// DataAdapter & Liveliness Monitoring Endpoints
+app.get('/api/adapter/liveliness', (_req, res) => {
+  res.json(getLivelinessSnapshot());
+});
+
+app.post('/api/adapter/ping', async (_req, res) => {
+  try {
+    const updated = await pingProviders();
+    res.json({ ok: true, providers: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/adapter/heatmap', (req, res) => {
+  const market = (req.query.market as MarketType) || 'nifty';
+  const data = getMarketHeatmapData(market);
+  res.json(data);
+});
+
+// Auto-Failover Circuit Breaker Endpoints
+app.get('/api/adapter/failover', (_req, res) => {
+  res.json(getFailoverSnapshot());
+});
+
+app.post('/api/adapter/failover/update', (req, res) => {
+  try {
+    const { market, latencyThresholdMs, autoFailoverEnabled, autoRecoverEnabled, consecutiveFailureThreshold } = req.body;
+    const updated = updateFailoverRule(market as MarketType, {
+      latencyThresholdMs,
+      autoFailoverEnabled,
+      autoRecoverEnabled,
+      consecutiveFailureThreshold,
+    });
+    res.json({ ok: true, rule: updated });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/adapter/failover/simulate', (req, res) => {
+  try {
+    const { market, type = 'latency_spike' } = req.body;
+    const rule = simulateFailover(market as MarketType, type);
+    res.json({ ok: true, rule });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/adapter/failover/recover', (req, res) => {
+  try {
+    const { market } = req.body;
+    const rule = forceRecoverFailover(market as MarketType);
+    res.json({ ok: true, rule });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 app.get('/api/auth/status', (_req, res) => {
@@ -137,6 +206,30 @@ app.post('/api/news/signals', async (req, res) => {
   try {
     const { symbols = [], market = 'nifty' } = req.body;
     const result = await fetchMarketNewsForSignals(symbols, market as MarketType);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ detail: err.message || 'Failed to fetch market news' });
+  }
+});
+
+// Market-Wide News & Google Search Grounded Intelligence
+app.get('/api/news/market', async (req, res) => {
+  try {
+    const market = (req.query.market as MarketType) || 'nifty';
+    const refresh = req.query.refresh === 'true';
+    const symbolsParam = req.query.symbols as string;
+    const symbols = symbolsParam ? symbolsParam.split(',').map((s) => s.trim()) : undefined;
+    const result = await fetchMarketNews(market, symbols, refresh);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ detail: err.message || 'Failed to fetch market news' });
+  }
+});
+
+app.post('/api/news/market', async (req, res) => {
+  try {
+    const { market = 'nifty', symbols, refresh = false } = req.body;
+    const result = await fetchMarketNews(market as MarketType, symbols, Boolean(refresh));
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ detail: err.message || 'Failed to fetch market news' });
