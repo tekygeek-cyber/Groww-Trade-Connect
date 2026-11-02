@@ -30,11 +30,12 @@ export function deriveCompletedDailyTrend(
   const byDate = new Map<string, number>();
   for (const c of candles) {
     if (!c || typeof c.date !== 'string' ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(c.date) || c.date >= today ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(c.date) || c.date > today ||
         !Number.isFinite(c.close) || c.close <= 0 ||
         (!Number.isFinite(Date.parse(c.date + 'T00:00:00.000Z')) ||
           new Date(Date.parse(c.date + 'T00:00:00.000Z')).toISOString().slice(0, 10) !== c.date) ||
         byDate.has(c.date)) return null;
+    if (c.date === today) continue; // Provider's current session is not a completed daily bar.
     byDate.set(c.date, c.close);
   }
   if (byDate.size < 50) return null;
@@ -59,9 +60,16 @@ export function isTrustedMark(
   if (!mark || !Number.isFinite(mark.price) || mark.price <= 0 ||
       !Number.isFinite(mark.timestamp) || mark.timestamp! > now + 60_000 ||
       typeof mark.source !== 'string' || !mark.source.trim() ||
-      mark.status === 'Sample') return false;
+      !['Live', 'Delayed', 'Closed'].includes(mark.status || '')) return false;
   const source = mark.source.toLowerCase();
   if (/sample|synthetic|dummy|placeholder|saved nifty tape|mock|fallback/.test(source)) return false;
+  if (![
+    'daily candles: kraken public api',
+    'daily candles: binance public',
+    'daily candles: stooq',
+    'daily candles: yahoo finance',
+    'binance public spot stream',
+  ].includes(source)) return false;
   // A recent real stream or last verified daily quote (with explicit source).
   return now - mark.timestamp! <= 8 * 86_400_000;
 }
