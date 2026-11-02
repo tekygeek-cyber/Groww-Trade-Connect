@@ -28,7 +28,7 @@ jobs:
         run: bun run test:market-integrity
       - name: Install headless browser smoke harness
         run: |
-          npm install --no-save --package-lock=false --ignore-scripts playwright
+          npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps playwright
           npx playwright install --with-deps chromium
       - name: Browser and API smoke — desktop/mobile
         shell: bash
