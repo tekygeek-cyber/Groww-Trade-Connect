@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { adjustSliderTargets, planRebalanceOrders } from '../src/lib/rebalance-engine';
+import { adjustSliderTargets, planRebalanceOrders, reconcilePaperFills } from '../src/lib/rebalance-engine';
 import type { PortfolioHolding } from '../src/types/portfolio';
 import type { TargetAllocation } from '../src/types/rebalance';
 
@@ -74,4 +74,29 @@ test('cash reserve is preserved after fees in generated paper proposals', () => 
     }
   }
   assert.equal(examined,404);
+});
+
+test('direct paper reconciliation refuses oversell and duplicate order ids', () => {
+  const order = {
+    id:'o1', ticker:'AAA', name:'A', market:'nifty' as const,
+    side:'SELL' as const, alignment:'OVERWEIGHT_SELL' as const,
+    currentShares:20, targetShares:0, quantityDelta:25,
+    referencePrice:100, executionPrice:100, orderNotional:2500,
+    estimatedFee:1, currentWeightPct:60, targetWeightPct:40,
+    driftPct:20, status:'PROPOSED' as const,
+  };
+  assert.throws(() => reconcilePaperFills(portfolio,500,[order]), /exceeds owned/);
+  const legal = {...order,quantityDelta:1,targetShares:19,orderNotional:100};
+  assert.throws(() => reconcilePaperFills(portfolio,500,[legal,legal]), /duplicate paper fill/);
+});
+test('direct paper reconciliation enforces reserve even for valid-looking buys', () => {
+  const buy = {
+    id:'buy1', ticker:'AAA', name:'A', market:'nifty' as const,
+    side:'BUY' as const, alignment:'UNDERWEIGHT_BUY' as const,
+    currentShares:20, targetShares:21, quantityDelta:1,
+    referencePrice:100, executionPrice:100, orderNotional:100,
+    estimatedFee:1, currentWeightPct:60, targetWeightPct:70,
+    driftPct:-10, status:'PROPOSED' as const,
+  };
+  assert.throws(() => reconcilePaperFills(portfolio,200,[buy],100), /violates/);
 });
