@@ -156,9 +156,9 @@ export function getAllBrokersStatus(): Record<BrokerId, BrokerStatus> {
       name: 'Kraken (Crypto)',
       market: 'crypto',
       currency: 'USDT',
-      mode: credentials.kraken.isConfigured ? 'live' : 'paper',
-      configured: credentials.kraken.isConfigured,
-      accountName: credentials.kraken.isConfigured ? 'Kraken Pro Live' : 'Kraken Paper Sim',
+      mode: 'paper',
+      configured: false,
+      accountName: 'Kraken Paper Sim',
       activeTriggersCount: krakenTriggers,
       supportedOrderTypes: ['Conditional Stop-Limit', 'Take-Profit-Limit', 'Spot Limit', 'Trailing Stop'],
       notes: '24/7 Crypto. Public REST & WS v2 keyless feeds. Private API requires API-Key & HMAC-SHA512 sign.',
@@ -168,11 +168,9 @@ export function getAllBrokersStatus(): Record<BrokerId, BrokerStatus> {
       name: 'eToro (NASDAQ & Global ETFs)',
       market: 'nasdaq',
       currency: 'USD',
-      mode: credentials.etoro.isConfigured ? 'live' : 'paper',
-      configured: credentials.etoro.isConfigured,
-      accountName: credentials.etoro.isConfigured
-        ? `eToro ${credentials.etoro.environment === 'production' ? 'Real' : 'Demo'}`
-        : 'eToro Paper Sandbox',
+      mode: 'paper',
+      configured: false,
+      accountName: 'eToro Paper Sandbox',
       activeTriggersCount: etoroTriggers,
       supportedOrderTypes: ['Bracket Order (SL/TP)', 'Conditional Limit', 'Trailing Stop Loss', 'Fractional Shares'],
       notes: 'US Equities & ETFs. Open API uses Developer App Key & User Token. Bracket StopLoss/TakeProfit orders.',
@@ -180,17 +178,17 @@ export function getAllBrokersStatus(): Record<BrokerId, BrokerStatus> {
   };
 }
 
+// No private broker placement API exists in this version. Never retain credentials
+// or report a live connection until broker authorization and order acknowledgment
+// are implemented and tested end to end.
 export function configureKraken(apiKey: string, apiSecret: string): { success: boolean; message: string } {
-  if (!apiKey.trim() || !apiSecret.trim()) {
-    credentials.kraken.isConfigured = false;
-    credentials.kraken.apiKey = '';
-    credentials.kraken.apiSecret = '';
+  credentials.kraken.apiKey = '';
+  credentials.kraken.apiSecret = '';
+  credentials.kraken.isConfigured = false;
+  if (!apiKey.trim() && !apiSecret.trim()) {
     return { success: true, message: 'Kraken reset to Paper Trading mode.' };
   }
-  credentials.kraken.apiKey = apiKey.trim();
-  credentials.kraken.apiSecret = apiSecret.trim();
-  credentials.kraken.isConfigured = true;
-  return { success: true, message: 'Kraken API keys configured. Live trading mode enabled.' };
+  return { success: false, message: 'Live Kraken brokerage is not implemented; credentials were not retained.' };
 }
 
 export function configureEtoro(
@@ -198,17 +196,14 @@ export function configureEtoro(
   userKey: string,
   environment: 'sandbox' | 'production' = 'sandbox',
 ): { success: boolean; message: string } {
-  if (!appKey.trim()) {
-    credentials.etoro.isConfigured = false;
-    credentials.etoro.appKey = '';
-    credentials.etoro.userKey = '';
-    return { success: true, message: 'eToro reset to Paper Sandbox mode.' };
+  credentials.etoro.appKey = '';
+  credentials.etoro.userKey = '';
+  credentials.etoro.environment = 'sandbox';
+  credentials.etoro.isConfigured = false;
+  if (!appKey.trim() && !userKey.trim()) {
+    return { success: true, message: 'eToro reset to Paper Trading mode.' };
   }
-  credentials.etoro.appKey = appKey.trim();
-  credentials.etoro.userKey = userKey.trim();
-  credentials.etoro.environment = environment;
-  credentials.etoro.isConfigured = true;
-  return { success: true, message: `eToro Open API configured (${environment.toUpperCase()}).` };
+  return { success: false, message: 'Live eToro brokerage is not implemented; credentials were not retained.' };
 }
 
 export interface PlaceAlgoCandidate {
@@ -262,10 +257,7 @@ export async function executeAlgoForMarket(
       status: 'active',
       mode: broker.mode,
       createdAt: new Date().toISOString(),
-      message:
-        broker.mode === 'live'
-          ? `Transmitted to ${broker.name} API. Active trigger at ${entry}.`
-          : `Simulated trigger active on ${broker.name} paper tape.`,
+      message: `Simulated trigger active on ${broker.name} paper tape. No broker order was submitted.`,
     };
 
     // If Groww market, sync with Groww dummy GTT ledger as well
