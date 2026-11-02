@@ -110,7 +110,8 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
 
   function resetToSampleHoldings() {
     setHoldings(INITIAL_HOLDINGS);
-    setCashReserve(350000);
+    // Demo reset must not retain unrelated USD or USDT cash from the prior ledger.
+    setCashBalances(migrateLegacyInrCash(350000));
   }
 
   function addOpportunityToPortfolio(opp: MarketOpportunity) {
