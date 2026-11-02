@@ -34,6 +34,6 @@ test('safety invariant clauses are retained in both prompt and blueprint',()=>{
   ]){
     assert.ok(match[1].includes(text),text);
   }
-  assert.match(blueprint,/live trading.*unavailable/i);
+  assert.match(blueprint,/live trading[: ]+unavailable/i);
   assert.match(blueprint,/server\/security-policy\.mjs/);
 });
