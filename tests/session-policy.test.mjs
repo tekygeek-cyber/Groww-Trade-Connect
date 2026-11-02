@@ -53,6 +53,8 @@ test('reverse-proxy public Origin allows legitimate POSTs with private upstream 
   assert.equal(isSameOrigin('https://trade.example.test','internal-service:3000',false,
     'https://trade.example.test'),true);
   assert.equal(isSameOrigin('https://trade.example.test','trade.example.test',true),true);
+  assert.equal(isSameOrigin('https://attacker.example.test','attacker.example.test',true,
+    'https://trade.example.test'),false);
 });
 
 test('explicit public origin rejects cross-site, downgrade, forged and invalid origins',()=>{
