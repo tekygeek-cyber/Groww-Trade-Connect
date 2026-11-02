@@ -138,7 +138,10 @@ app.post('/api/auth/login', async (req, res) => {
     const status = await loginGroww(req.body);
     res.json(status);
   } catch (err: any) {
-    res.status(400).json({ detail: err.message || 'Login failed' });
+    const message = err instanceof Error ? err.message : 'Login failed';
+    const statusCode = message.includes('unreachable') ? 502
+      : message.includes('required') ? 400 : 401;
+    res.status(statusCode).json({ detail: message });
   }
 });
 
