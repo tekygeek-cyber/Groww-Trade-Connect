@@ -13,21 +13,11 @@ function ensureDataDir() {
   }
 }
 
-export function getNext6AmIst(): Date {
-  const now = new Date();
-  // IST is UTC + 5:30
-  const utcNow = now.getTime() + now.getTimezoneOffset() * 60000;
-  const istNow = new Date(utcNow + 5.5 * 3600000);
-
-  const expiryIst = new Date(istNow);
-  expiryIst.setHours(6, 0, 0, 0);
-
-  if (istNow.getHours() >= 6) {
-    expiryIst.setDate(expiryIst.getDate() + 1);
-  }
-
-  // Convert back to UTC date object
-  return new Date(expiryIst.getTime() - 5.5 * 3600000);
+export function getNext6AmIst(now: Date = new Date()): Date {
+  // 06:00 IST = 00:30 UTC; avoid host-local timezone methods.
+  const shifted = new Date(now.getTime() + 330 * 60_000);
+  const day = shifted.getUTCDate() + (shifted.getUTCHours() >= 6 ? 1 : 0);
+  return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), day, 0, 30));
 }
 
 export type StoredSession = {
@@ -111,48 +101,37 @@ export function getPublicSessionStatus(): SessionStatus {
 }
 
 export async function loginGroww(body: { apiKey?: string; apiSecret?: string; requestToken?: string }): Promise<SessionStatus> {
-  const apiKey = (body.apiKey || '').trim();
-  const apiSecret = (body.apiSecret || '').trim();
-  const requestToken = (body.requestToken || '').trim();
-
-  if (!apiKey && !apiSecret && !requestToken) {
-    throw new Error('Please provide your Groww API credentials.');
+  const apiKey = typeof body?.apiKey === 'string' ? body.apiKey.trim() : '';
+  const apiSecret = typeof body?.apiSecret === 'string' ? body.apiSecret.trim() : '';
+  const requestToken = typeof body?.requestToken === 'string' ? body.requestToken.trim() : '';
+  if (!apiKey || (!apiSecret && !requestToken)) {
+    throw new Error('Groww API key and API secret or request token are required.');
   }
-
   const flow = requestToken ? 'totp' : 'approval';
-
-  // If live credentials are provided, attempt token creation with Groww API
-  let mintedToken = `groww_token_${Math.random().toString(36).substring(2, 12)}`;
-  if (apiKey && (apiSecret || requestToken)) {
-    try {
-      const payload: Record<string, string> = { api_key: apiKey };
-      if (apiSecret) payload.api_secret = apiSecret;
-      if (requestToken) payload.request_token = requestToken;
-
-      const res = await fetch('https://api.groww.in/v1/api/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 GrowwConnectDesk/1.0' },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        const data: any = await res.json();
-        if (data?.access_token) {
-          mintedToken = data.access_token;
-        }
-      }
-    } catch {
-      // Fall through to standard session minting
-    }
+  const payload: Record<string, string> = { api_key: apiKey };
+  if (apiSecret) payload.api_secret = apiSecret;
+  if (requestToken) payload.request_token = requestToken;
+  let response: Response;
+  try {
+    response = await fetch('https://api.groww.in/v1/api/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'GrowwConnectDesk/1.0' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new Error('Groww authentication service unreachable. No session was created.');
   }
-
-  // Token is stored strictly server-side
-  const session = writeSession(mintedToken, flow);
-  return {
-    authenticated: true,
-    expires_at: session.expiresAt,
-    flow: session.flow,
-  };
+  if (!response.ok) throw new Error('Groww rejected authentication. No session was created.');
+  let data: unknown;
+  try { data = await response.json(); }
+  catch { throw new Error('Invalid Groww authentication response.'); }
+  if (!data || typeof data !== 'object' || !('access_token' in data) ||
+      typeof data.access_token !== 'string' || !data.access_token.trim()) {
+    throw new Error('Groww did not return an access token. No session was created.');
+  }
+  const session = writeSession(data.access_token, flow);
+  return { authenticated: true, expires_at: session.expiresAt, flow: session.flow };
 }
 
 export function getProfile(sample: boolean = false): Profile {
