@@ -15,7 +15,8 @@ export interface MockAck {
 const orderIdentity=(order:ProposedOrder):string=>createHash('sha256').update(JSON.stringify([
   order.requestId,order.userId,order.accountId,order.market,order.symbol,
   order.side,order.quantity,order.orderType,order.limitPrice??null,
-  order.stopPrice??null,order.timeInForce,order.strategyId,order.executionMode,
+  order.stopPrice??null,order.timeInForce,order.strategyId,order.proposedBy,
+  order.executionMode,order.humanApprovalStatus,
 ])).digest('hex');
 
 export class MockBrokerContract {
