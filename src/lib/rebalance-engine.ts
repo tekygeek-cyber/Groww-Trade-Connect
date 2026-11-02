@@ -14,7 +14,7 @@ import type {
 } from '../types/rebalance';
 import { getConstituents } from '../data/universes';
 
-export const REBALANCE_RULE_VERSION = '2.0-audited';
+export const REBALANCE_RULE_VERSION = '2.1-guardrails';
 export const DEFAULT_CASH_FLOOR_PCT = 5.0; // 5% minimum cash reserve
 export const DRIFT_TOLERANCE_PCT = 0.5; // Ignore drift under 0.5%
 export const FX_USD_TO_INR = 83.5;
@@ -413,8 +413,10 @@ export function planRebalanceOrders(
     targets.filter(t => t.targetWeightPct > 0).some(t =>
       !quotesMap[t.ticker] || !Number.isFinite(quotesMap[t.ticker].price) ||
       quotesMap[t.ticker].price <= 0);
-  const invalidHoldings = holdings.filter(h => h.market === market).some(h =>
+  const scopedHoldings = holdings.filter(h => h.market === market);
+  const invalidHoldings = scopedHoldings.some(h =>
     !Number.isFinite(h.shares) || h.shares < 0) ||
+    new Set(scopedHoldings.map(h => h.ticker)).size !== scopedHoldings.length ||
     !Number.isFinite(cashBalance) || cashBalance < 0;
 
   if (needsCurrencyLedger(market) || invalidTargets || missingQuote || invalidHoldings) {
@@ -714,12 +716,24 @@ export function planRebalanceOrders(
 export function reconcilePaperFills(
   currentHoldings: PortfolioHolding[],
   currentCash: number,
-  orders: ProposedRebalanceOrder[]
+  orders: ProposedRebalanceOrder[],
+  minimumCashAfter: number = 0
 ): {
   updatedHoldings: PortfolioHolding[];
   updatedCash: number;
   batchExecution: RebalanceBatchExecution;
 } {
+  if (!Number.isFinite(currentCash) || currentCash < 0 ||
+      !Number.isFinite(minimumCashAfter) || minimumCashAfter < 0) {
+    throw new Error('Invalid cash reserve for paper reconciliation');
+  }
+  const seenOrderIds = new Set<string>();
+  const seenHoldings = new Set<string>();
+  for (const h of currentHoldings) {
+    const key = `${h.market}:${h.ticker}`;
+    if (seenHoldings.has(key)) throw new Error('Duplicate portfolio positions must be consolidated before reconciliation');
+    seenHoldings.add(key);
+  }
   const batchId = 'batch-' + Math.random().toString(36).substring(2, 9);
   const authorizedAt = Date.now();
   const fills: ExecutionFillEvent[] = [];
@@ -732,6 +746,18 @@ export function reconcilePaperFills(
   let totalFeesCharged = 0;
 
   for (const ord of orders) {
+    if (seenOrderIds.has(ord.id) || !Number.isFinite(ord.quantityDelta) || ord.quantityDelta <= 0 ||
+        !Number.isFinite(ord.executionPrice) || ord.executionPrice <= 0 ||
+        !Number.isFinite(ord.orderNotional) || ord.orderNotional <= 0 ||
+        !Number.isFinite(ord.estimatedFee) || ord.estimatedFee < 0 ||
+        Math.abs(ord.orderNotional - ord.quantityDelta * ord.executionPrice) > 0.02) {
+      throw new Error('Invalid or duplicate paper fill order');
+    }
+    seenOrderIds.add(ord.id);
+    const held = holdingsMap.get(`${ord.market}:${ord.ticker}`);
+    if (ord.side === 'SELL' && (!held || held.shares + 1e-9 < ord.quantityDelta)) {
+      throw new Error('Paper order exceeds owned shares');
+    }
     const fillId = 'fill-' + Math.random().toString(36).substring(2, 9);
     fills.push({
       fillId,
@@ -753,7 +779,7 @@ export function reconcilePaperFills(
     if (ord.side === 'SELL') {
       newCash += ord.orderNotional - ord.estimatedFee;
       if (existing) {
-        existing.shares = Math.max(0, existing.shares - ord.quantityDelta);
+        existing.shares -= ord.quantityDelta;
       }
     } else {
       // BUY
@@ -775,6 +801,9 @@ export function reconcilePaperFills(
     }
   }
 
+  if (newCash < minimumCashAfter - 0.005) {
+    throw new Error('Paper batch violates the required cash reserve');
+  }
   // Filter out any positions with 0 shares
   const updatedHoldings = Array.from(holdingsMap.values()).filter((h) => h.shares > 0);
 
