@@ -21,6 +21,7 @@ import {
   saveDummyGtts,
 } from './server/groww-service';
 import { fetchHistoricalCandles, getSampleCandles } from './server/market-data';
+import { isPrivilegedMutationBlocked } from './server/security-policy.mjs';
 import { fetchMarketNewsForSignals, fetchMarketNews } from './server/news-service';
 import {
   getAllBrokersStatus,
@@ -49,23 +50,9 @@ const wss = new WebSocketServer({ server, path: '/ws/ticks' });
 
 app.use(express.json({ limit: '256kb' }));
 
-// Fail-closed temporary gate: these legacy endpoints do not authenticate the
-// individual caller. Re-enable only with server-side authorization,
-// per-account isolation, idempotent order/fill reconciliation and integration tests.
-const unsafeMutations = new Set([
-  '/api/automation',
-  '/api/brokers/configure',
-  '/api/algo-orders/execute',
-  '/api/algo-orders/cancel',
-  '/api/algo-orders/gtt-state',
-  '/api/algo-orders/live-gtt',
-  '/api/adapter/failover/update',
-  '/api/adapter/failover/simulate',
-  '/api/adapter/failover/recover',
-]);
+// Deny privileged mutations until caller-bound authorization is implemented.
 app.use((req, res, next) => {
-  const normalizedPath = req.path.toLowerCase().replace(/\/+$/, '');
-  if (req.method === 'POST' && unsafeMutations.has(normalizedPath)) {
+  if (isPrivilegedMutationBlocked(req.method, req.path)) {
     res.status(503).json({
       detail: 'Privileged state changes are disabled pending per-user authorization and audited broker reconciliation.',
     });
