@@ -25,6 +25,7 @@ import { isPrivilegedMutationBlocked } from './server/security-policy.mjs';
 import { isAnonymousApiAllowed } from './server/api-access.mjs';
 import { isSameOrigin, makeClearSessionCookie, makeSessionCookie, readSessionCookie } from './server/session-policy.mjs';
 import { getAiStatus,validateAiRequest,allowAiRequest,researchWithAi } from './server/ai/research-service.mjs';
+import { verifyKrakenSpotReadOnly } from './server/kraken/spot-readonly.mjs';
 import { parseRehearsalInput, runTradingRehearsal, readRehearsalAudits } from './server/trading/rehearsal';
 import { fetchMarketNewsForSignals, fetchMarketNews } from './server/news-service';
 import {
@@ -160,6 +161,35 @@ app.get('/api/trading/audit',(req,res)=>{
   res.setHeader('Cache-Control','no-store');
   try { res.json({records:readRehearsalAudits(40),simulationOnly:true}); }
   catch { res.status(503).json({detail:'Audit integrity check failed; no trading actions permitted'}); }
+});
+
+// One-shot, pre-login Kraken Spot READ-ONLY diagnostic. Does NOT create an app
+// session, retain the key, query account funds or enable any trading endpoints.
+const krakenCheckTimes=new Map<string,number[]>();
+let krakenGlobalChecks:number[]=[];
+app.post('/api/kraken/check-readonly',async(req,res)=>{
+  res.setHeader('Cache-Control','no-store');
+  const origin=req.get('origin')||'';
+  if(process.env.NODE_ENV==='production' && !origin.startsWith('https://'))
+    return res.status(403).json({detail:'HTTPS_REQUIRED'});
+  // Never trust X-Forwarded-For for a security decision without a configured trusted proxy.
+  const remote=req.socket.remoteAddress||'unknown', now=Date.now();
+  krakenGlobalChecks=krakenGlobalChecks.filter(t=>t>now-60_000);
+  if(krakenGlobalChecks.length>=20) return res.status(429).json({detail:'KRAKEN_GLOBAL_RATE_LIMIT'});
+  const prior=(krakenCheckTimes.get(remote)||[]).filter(t=>t>now-60_000);
+  if(prior.length>=3) return res.status(429).json({detail:'KRAKEN_KEY_CHECK_RATE_LIMIT'});
+  prior.push(now);krakenCheckTimes.set(remote,prior);
+  krakenGlobalChecks.push(now);
+  if(krakenCheckTimes.size>1000) krakenCheckTimes.clear();
+  try {
+    const result=await verifyKrakenSpotReadOnly(req.body);
+    return res.status(result.verified?200:422).json(result);
+  }catch(error) {
+    // Never echo secrets or untrusted provider errors to clients.
+    const code=error instanceof TypeError?'INVALID_KRAKEN_CREDENTIAL_FORMAT':
+      error instanceof Error && /^[A-Z_]+$/.test(error.message)?error.message:'KRAKEN_VERIFICATION_FAILED';
+    return res.status(error instanceof TypeError?400:502).json({detail:code});
+  }
 });
 
 // DataAdapter & Liveliness Monitoring Endpoints
