@@ -30,6 +30,8 @@ jobs:
         run: bun run test:ai-harness
       - name: Master prompt completeness and safety contract
         run: node --test tests/prompt-contract.test.mjs
+      - name: Deterministic trading risk and rehearsal tests
+        run: bun run test:risk-gate
       - name: Install headless browser smoke harness
         run: |
           npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps playwright
