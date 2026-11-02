@@ -13,7 +13,7 @@
     "test": "node --test tests/auth-policy.test.mjs tests/security-policy.test.mjs tests/session-policy.test.mjs",
     "test:auth-integration": "tsx --test tests/groww-auth.test.ts",
     "test:rebalance": "tsx --test tests/rebalance-guards.test.ts",
-    "test:market-integrity": "tsx --test tests/market-integrity.test.ts"
+    "test:market-integrity": "tsx --test tests/market-integrity.test.ts tests/market-data-integrity.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
