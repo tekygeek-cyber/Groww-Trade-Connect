@@ -33,3 +33,21 @@ test('sample historical candles are explicit and live Nifty fallback fails close
   const live=await fetch(base+'/api/candles/nifty/RELIANCE');
   assert.equal(live.status,500);
 });
+
+test('AI status reveals only provider readiness, not private data', async()=>{
+  const res=await fetch(base+'/api/ai/status');
+  assert.equal(res.status,200);
+  const status=await res.json();
+  assert.equal(typeof status.ready,'boolean');
+  assert.equal(status.mode,'read_only');
+  assert.equal(status.liveOrdersEnabled,false);
+});
+test('AI research requires authentication and matching Origin',async()=>{
+  const anonymous=await fetch(base+'/api/ai/research',{method:'POST',
+    headers:{Origin:base,'content-type':'application/json'},
+    body:JSON.stringify({market:'nasdaq',symbol:'AAPL'})});
+  assert.equal(anonymous.status,401);
+  const attack=await fetch(base+'/api/ai/research',{method:'POST',
+    headers:{Origin:'https://malicious.example','content-type':'application/json'},body:'{}'});
+  assert.equal(attack.status,403);
+});
