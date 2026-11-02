@@ -278,56 +278,90 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
           <TabButton id="user" selected={tab === 'user'} onSelect={() => setTab('user')} label="User" />
         </div>
 
-        {/* Tab Panels */}
-        <div className="mt-6" role="tabpanel" id="panel-signals" hidden={tab !== 'signals'}>
-          <SignalsPanel sample={sample} />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-news" hidden={tab !== 'news'}>
-          <MarketNewsPanel market={market} />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-heatmap" hidden={tab !== 'heatmap'}>
-          <MarketHeatmap />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-health" hidden={tab !== 'health'}>
-          <MarketHealth />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-portfolio" hidden={tab !== 'portfolio'}>
-          <PortfolioPanel />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-strategies" hidden={tab !== 'strategies'}>
-          <StrategiesPanel />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-algo" hidden={tab !== 'algo'}>
-          <AlgoSignalsPanel />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-gtt" hidden={tab !== 'gtt'}>
-          <GttPanel />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-alerts" hidden={tab !== 'alerts'}>
-          <AlertsPanel />
-        </div>
-
-        <div className="mt-6" role="tabpanel" id="panel-user" hidden={tab !== 'user'}>
-          <UserPanel profile={profile} loading={profileLoading} error={profileError} />
-        </div>
+        {/* Inactive tabs are unmounted to avoid hidden provider calls and background work. */}
+        {tab === 'signals' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-signals" aria-labelledby="tab-signals">
+            <Suspense fallback={<DeskLoading label="signals" />}>
+              <SignalsPanel sample={sample} />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'news' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-news" aria-labelledby="tab-news">
+            <Suspense fallback={<DeskLoading label="news" />}>
+              <MarketNewsPanel market={market} />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'heatmap' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-heatmap" aria-labelledby="tab-heatmap">
+            <Suspense fallback={<DeskLoading label="heatmap" />}>
+              <MarketHeatmap />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'health' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-health" aria-labelledby="tab-health">
+            <Suspense fallback={<DeskLoading label="health" />}>
+              <MarketHealth />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'portfolio' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-portfolio" aria-labelledby="tab-portfolio">
+            <Suspense fallback={<DeskLoading label="portfolio" />}>
+              <PortfolioPanel />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'strategies' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-strategies" aria-labelledby="tab-strategies">
+            <Suspense fallback={<DeskLoading label="strategies" />}>
+              <StrategiesPanel />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'algo' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-algo" aria-labelledby="tab-algo">
+            <Suspense fallback={<DeskLoading label="algo" />}>
+              <AlgoSignalsPanel />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'gtt' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-gtt" aria-labelledby="tab-gtt">
+            <Suspense fallback={<DeskLoading label="gtt" />}>
+              <GttPanel />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'alerts' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-alerts" aria-labelledby="tab-alerts">
+            <Suspense fallback={<DeskLoading label="alerts" />}>
+              <AlertsPanel />
+            </Suspense>
+          </div>
+        )}
+        {tab === 'user' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-user" aria-labelledby="tab-user">
+            <Suspense fallback={<DeskLoading label="user" />}>
+              <UserPanel profile={profile} loading={profileLoading} error={profileError} />
+            </Suspense>
+          </div>
+        )}
 
         {/* Broker Configuration and Liveliness Modals */}
-        <BrokerStatusModal isOpen={brokerModalOpen} onClose={() => setBrokerModalOpen(false)} />
-        <LivelinessModal
-          isOpen={livelinessModalOpen}
-          onClose={() => setLivelinessModalOpen(false)}
-          currentMarket={market}
-          onNavigateToHealthTab={() => setTab('health')}
-        />
-      </main>
+        {brokerModalOpen && <Suspense fallback={<DeskLoading label="broker status" />}><BrokerStatusModal isOpen={brokerModalOpen} onClose={() => setBrokerModalOpen(false)} /></Suspense>}
+        {livelinessModalOpen && (
+          <Suspense fallback={<DeskLoading label="feed telemetry" />}>
+            <LivelinessModal
+              isOpen={livelinessModalOpen}
+              onClose={() => setLivelinessModalOpen(false)}
+              currentMarket={market}
+              onNavigateToHealthTab={() => setTab('health')}
+            />
+          </Suspense>
+        )}      </main>
     </div>
   );
 }
@@ -360,6 +394,15 @@ function TabButton({
     >
       {label}
     </button>
+  );
+}
+
+function DeskLoading({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-xl border border-border bg-surface text-muted" role="status">
+      <span aria-hidden="true" className="size-8 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+      <span className="text-sm">Loading {label}…</span>
+    </div>
   );
 }
 
