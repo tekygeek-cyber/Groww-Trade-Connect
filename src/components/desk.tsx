@@ -1,19 +1,19 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
-import { LogOut, Activity, Radio, Clock, ShieldCheck, CheckSquare, Square, Newspaper, Sparkles, Cpu } from 'lucide-react';
+import { useEffect, useMemo, useState, useRef, lazy, Suspense, type KeyboardEvent } from 'react';
+import { LogOut, Activity, Radio, Clock, ShieldCheck, CheckSquare, Square, Newspaper, Sparkles, Cpu, LayoutDashboard, AlertTriangle } from 'lucide-react';
 import { MarketSelector } from './market-selector';
 import { AccentSwitch } from './accent';
 import { Wordmark } from './wordmark';
-import { StrategiesPanel } from './strategies-panel';
-import { AlgoSignalsPanel } from './algo-signals';
-import { GttPanel } from './gtt-panel';
-import { AlertsPanel } from './alerts-panel';
-import { PortfolioPanel } from './portfolio-panel';
+
+
+
+
+
 import { SignalNewsPanel } from './signal-news-panel';
-import { BrokerStatusModal } from './broker-status-modal';
-import { MarketHeatmap } from './market-heatmap';
-import { MarketHealth } from './market-health';
-import { MarketNewsPanel } from './market-news-panel';
-import { LivelinessModal } from './liveliness-modal';
+
+
+
+
+
 import { useMarketQuotes } from '../lib/quotes-context';
 import {
   api,
@@ -31,6 +31,33 @@ import {
   type SimResult,
 } from '../lib/api';
 import { MARKETS } from '../data/universes';
+
+// Split high-cost workspaces into on-demand chunks.
+const StrategiesPanel = lazy(() => import('./strategies-panel').then(m => ({ default: m.StrategiesPanel })));
+const AlgoSignalsPanel = lazy(() => import('./algo-signals').then(m => ({ default: m.AlgoSignalsPanel })));
+const GttPanel = lazy(() => import('./gtt-panel').then(m => ({ default: m.GttPanel })));
+const AlertsPanel = lazy(() => import('./alerts-panel').then(m => ({ default: m.AlertsPanel })));
+const PortfolioPanel = lazy(() => import('./portfolio-panel').then(m => ({ default: m.PortfolioPanel })));
+const MarketHeatmap = lazy(() => import('./market-heatmap').then(m => ({ default: m.MarketHeatmap })));
+const MarketHealth = lazy(() => import('./market-health').then(m => ({ default: m.MarketHealth })));
+const MarketNewsPanel = lazy(() => import('./market-news-panel').then(m => ({ default: m.MarketNewsPanel })));
+const BrokerStatusModal = lazy(() => import('./broker-status-modal').then(m => ({ default: m.BrokerStatusModal })));
+const LivelinessModal = lazy(() => import('./liveliness-modal').then(m => ({ default: m.LivelinessModal })));
+
+const TABS = ['signals','news','heatmap','health','portfolio','strategies','algo','gtt','alerts','user'] as const;
+type DeskTab = typeof TABS[number];
+const TAB_DETAILS: Record<DeskTab,{title:string;subtitle:string}> = {
+  signals:{title:'Signal intelligence',subtitle:'Scan market setups and review signal evidence.'},
+  news:{title:'Market news',subtitle:'Investigate catalysts and events before making decisions.'},
+  heatmap:{title:'Market landscape',subtitle:'Explore market breadth and concentration.'},
+  health:{title:'Data health',subtitle:'Review provider freshness and feed telemetry.'},
+  portfolio:{title:'Portfolio workspace',subtitle:'Inspect indicative holdings and model allocations.'},
+  strategies:{title:'Strategy lab',subtitle:'Research and backtest rule-based ideas.'},
+  algo:{title:'Paper order lab',subtitle:'Review simulated triggers; live broker execution remains disabled.'},
+  gtt:{title:'GTT simulations',subtitle:'Explore conditional orders without submitting trades.'},
+  alerts:{title:'Alert center',subtitle:'Monitor configured research alerts.'},
+  user:{title:'Workspace settings',subtitle:'View the active session and available services.'},
+};
 
 const fieldClass =
   'h-11 w-full rounded-lg border border-border bg-bg px-3 text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-primary';
@@ -52,7 +79,7 @@ const PRODUCT_LABEL: Record<string, string> = {
 
 export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => void }) {
   const { market, quoteStatus, dataSourceLabel, sessionClock } = useMarketQuotes();
-  const [tab, setTab] = useState<'user' | 'signals' | 'news' | 'heatmap' | 'health' | 'portfolio' | 'strategies' | 'algo' | 'gtt' | 'alerts'>('signals');
+  const [tab, setTab] = useState<DeskTab>('signals');
   const [session, setSession] = useState<SessionStatus | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -62,6 +89,16 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
   const [failoverCount, setFailoverCount] = useState(0);
 
   const mktConfig = MARKETS[market];
+  const activeSection = TAB_DETAILS[tab];
+  function onTabKeyboard(event: KeyboardEvent<HTMLDivElement>) {
+    if (!['ArrowRight','ArrowLeft','Home','End'].includes(event.key)) return;
+    event.preventDefault();
+    const index = TABS.indexOf(tab);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? TABS.length - 1
+      : (index + (event.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length;
+    setTab(TABS[next]);
+    document.getElementById(`tab-${TABS[next]}`)?.focus();
+  }
 
   useEffect(() => {
     let cancel = false;
