@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Scale,
   RefreshCw,
@@ -70,6 +70,7 @@ export function PortfolioRebalancePanel({
   const { getQuote, market: globalMarket } = useMarketQuotes();
 
   const [activeMarket, setActiveMarket] = useState<MarketType>(initialMarket);
+  const executedProposals = useRef(new Set<string>());
   const [activePreset, setActivePreset] = useState<RebalancePreset>('equal_weight');
   const [targetCashPct, setTargetCashPct] = useState<number>(DEFAULT_CASH_FLOOR_PCT);
   const [targets, setTargets] = useState<TargetAllocation[]>([]);
@@ -175,15 +176,17 @@ export function PortfolioRebalancePanel({
 
   // Execute paper rebalance batch
   function handleExecuteBatch() {
-    if (!canExecutePaperPlan(proposal)) return;
+    if (!canExecutePaperPlan(proposal) || executedProposals.current.has(proposal.id)) return;
 
     const { updatedHoldings, updatedCash, batchExecution } = reconcilePaperFills(
       holdings,
       cashReserve,
-      proposal.orders
+      proposal.orders,
+      proposal.requiredCashFloor
     );
+    executedProposals.current.add(proposal.id);
 
-    // Update global portfolio context atomically
+    // Update global portfolio context (two independent state updates)
     importHoldings(updatedHoldings);
     setCashReserve(updatedCash);
 
