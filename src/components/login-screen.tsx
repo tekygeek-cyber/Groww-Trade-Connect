@@ -3,6 +3,7 @@ import { Eye, EyeOff, KeyRound, ShieldCheck, ArrowRight, Play } from 'lucide-rea
 import { api, type SessionStatus } from '../lib/api';
 import { AccentSwitch } from './accent';
 import { Wordmark } from './wordmark';
+import { KrakenReadOnlyCard } from './kraken-readonly-card';
 
 const fieldClass =
   'h-11 w-full rounded-lg border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-muted focus-visible:ring-2 focus-visible:ring-primary';
@@ -240,6 +241,7 @@ export function LoginScreen({ onEnterDesk }: { onEnterDesk: (sample: boolean) =>
               </button>
             </div>
           </div>
+          <KrakenReadOnlyCard />
         </div>
 
         <div className="text-center text-xs leading-relaxed text-muted lg:col-start-2">
