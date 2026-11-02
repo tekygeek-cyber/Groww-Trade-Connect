@@ -268,69 +268,10 @@ export function generatePresetTargets(
     }));
   }
 
-  if (preset === 'market_cap') {
-    // Weight by constituent market cap index
-    let totalCap = 0;
-    const caps = tickersToInclude.map((item, idx) => {
-      const c = constituentList.find((c) => c.ticker === item.ticker);
-      // Deterministic cap proxy: index weight from market cap rank
-      const capProxy = c ? Math.max(1000, 100000 - idx * 12000) : 50000;
-      totalCap += capProxy;
-      return capProxy;
-    });
-
-    let allocated = 0;
-    const result: TargetAllocation[] = [];
-    for (let i = 0; i < n; i++) {
-      const w = Math.floor(((caps[i] / totalCap) * riskyBudgetPct) * 100) / 100;
-      allocated += w;
-      result.push({
-        ticker: tickersToInclude[i].ticker,
-        name: tickersToInclude[i].name,
-        market,
-        targetWeightPct: w,
-        isLocked: false,
-      });
-    }
-    // Largest-remainder pass to match exact risky budget
-    const diff = Math.round((riskyBudgetPct - allocated) * 100) / 100;
-    if (result.length > 0) {
-      result[0].targetWeightPct = Math.round((result[0].targetWeightPct + diff) * 100) / 100;
-    }
-    return result;
-  }
-
-  if (preset === 'momentum_tilt') {
-    // Momentum / Alpha Tilt: m_i = clamp(return_or_trend, -0.5, +0.5); raw_i = 1 + alpha * m_i
-    const alpha = 0.4;
-    let sumRaw = 0;
-    const rawWeights = tickersToInclude.map((item) => {
-      const q = quotesMap[item.ticker];
-      const ret = (q?.changePct || 0) / 100;
-      const m_i = Math.max(-0.5, Math.min(0.5, ret));
-      const raw = 1 + alpha * m_i;
-      sumRaw += raw;
-      return raw;
-    });
-
-    let allocated = 0;
-    const result: TargetAllocation[] = [];
-    for (let i = 0; i < n; i++) {
-      const w = Math.floor(((rawWeights[i] / sumRaw) * riskyBudgetPct) * 100) / 100;
-      allocated += w;
-      result.push({
-        ticker: tickersToInclude[i].ticker,
-        name: tickersToInclude[i].name,
-        market,
-        targetWeightPct: w,
-        isLocked: false,
-      });
-    }
-    const diff = Math.round((riskyBudgetPct - allocated) * 100) / 100;
-    if (result.length > 0) {
-      result[0].targetWeightPct = Math.round((result[0].targetWeightPct + diff) * 100) / 100;
-    }
-    return result;
+  // Market capitalization and alpha presets require verified cross-sectional
+  // inputs. Do not fabricate cap rank proxies or momentum from a single tick.
+  if (preset === 'market_cap' || preset === 'momentum_tilt') {
+    return [];
   }
 
   // Custom fallback: equal weight
