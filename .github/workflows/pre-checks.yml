@@ -8,7 +8,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -26,3 +26,22 @@ jobs:
         run: bun run test:rebalance
       - name: Currency and quote provenance tests
         run: bun run test:market-integrity
+      - name: Install headless browser smoke harness
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts playwright
+          npx playwright install --with-deps chromium
+      - name: Browser and API smoke — desktop/mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT=3000 bun run dev > /tmp/gtc-server.log 2>&1 &
+          PID=$!
+          trap 'kill $PID || true; cat /tmp/gtc-server.log' EXIT
+          ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/api/health > /dev/null; then ready=1; break; fi
+            sleep 2
+          done
+          if [ "$ready" != "1" ]; then echo "Server did not become ready"; exit 1; fi
+          TEST_BASE_URL=http://127.0.0.1:3000 node --test tests/http-smoke.test.mjs
+          TEST_BASE_URL=http://127.0.0.1:3000 node tests/browser-smoke.mjs
