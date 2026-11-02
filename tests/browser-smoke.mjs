@@ -27,7 +27,15 @@ try {
 
     await page.getByRole('tab',{name:'Portfolio',exact:true}).press('ArrowRight');
     await page.getByRole('heading',{name:'Strategy lab'}).waitFor();
-    await page.getByRole('tab',{name:'Strategies'}).press('Home');
+    await page.getByRole('tab',{name:'Algo Signals',exact:true}).click();
+    await page.getByRole('button',{name:'AI Agent',exact:true}).click();
+    await page.getByRole('heading',{name:'AI market research agent'}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'Run AI research'}).isDisabled(),true);
+    assert.equal(await page.getByRole('button',{name:'AI Agent'}).getAttribute('aria-pressed'),'true');
+    await page.getByRole('button',{name:'Normal Algo',exact:true}).click();
+    assert.equal(await page.getByRole('button',{name:'Normal Algo'}).getAttribute('aria-pressed'),'true');
+    console.log(`PASS AI/Normal Algo toggle ${width}x${height}`);
+        await page.getByRole('tab',{name:'Strategies'}).press('Home');
     await page.getByRole('heading',{name:'Signal intelligence'}).waitFor();
 
     const geometry = await page.evaluate(() => ({
