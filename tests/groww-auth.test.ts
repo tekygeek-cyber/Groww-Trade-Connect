@@ -98,5 +98,5 @@ test('legacy session without binding is ignored', async () => {
     accessToken: 'legacy', flow: 'approval', expiresAt: '2100-01-01T00:00:00Z'
   }));
   assert.equal(getPublicSessionStatus().authenticated, false);
-  assert.equal(getPublicSessionStatus('any'), false);
+  assert.equal(getPublicSessionStatus('any').authenticated, false);
 });
