@@ -3,12 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { getNext6AmIst, loginGroww, clearSession, getPublicSessionStatus } from '../server/groww-service';
 
 const origFetch = globalThis.fetch;
-const originalCwd = process.cwd();
 const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'groww-auth-'));
 process.chdir(testRoot);
+const { getNext6AmIst, loginGroww, clearSession, getPublicSessionStatus } = await import('../server/groww-service');
 afterEach(() => {
   globalThis.fetch = origFetch;
   clearSession();
