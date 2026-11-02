@@ -116,6 +116,7 @@ export function PortfolioRebalancePanel({
 
   // Initialize or update targets when active market or preset changes
   useEffect(() => {
+    if (activePreset === 'custom') return; // Preserve edited slider targets.
     const newTargets = generatePresetTargets(
       holdings,
       activeMarket,
@@ -154,10 +155,12 @@ export function PortfolioRebalancePanel({
 
   // Reset to current preset
   function handleResetPreset() {
+    const preset = activePreset === 'custom' ? 'equal_weight' : activePreset;
+    setActivePreset(preset);
     const reset = generatePresetTargets(
       holdings,
       activeMarket,
-      activePreset,
+      preset,
       quotesMap,
       targetCashPct
     );
@@ -166,7 +169,8 @@ export function PortfolioRebalancePanel({
 
   // Execute paper rebalance batch
   function handleExecuteBatch() {
-    if (proposal.orders.length === 0) return;
+    if (proposal.orders.length === 0 || proposal.feasibility === 'INFEASIBLE_CASH_FLOOR' || proposal.feasibility === 'INFEASIBLE_CONSTRAINTS' ||
+        proposal.feasibility === 'INFEASIBLE_CONSTRAINTS') return;
 
     const { updatedHoldings, updatedCash, batchExecution } = reconcilePaperFills(
       holdings,
@@ -291,7 +295,7 @@ export function PortfolioRebalancePanel({
         <div className="rounded-lg border border-border bg-surface p-4">
           <p className="text-xs font-medium uppercase tracking-wider text-muted">Scope Portfolio NAV</p>
           <p className="num mt-2 text-2xl font-bold text-fg">
-            {formatCurrency(proposal.currentNav)}
+            {proposal.feasibility === 'INFEASIBLE_CONSTRAINTS' ? 'N/A' : formatCurrency(proposal.currentNav)}
           </p>
           <div className="mt-2 flex items-center justify-between text-xs text-muted">
             <span>Invested: {formatCurrency(proposal.currentNav - proposal.currentCash)}</span>
@@ -302,7 +306,7 @@ export function PortfolioRebalancePanel({
         <div className="rounded-lg border border-border bg-surface p-4">
           <p className="text-xs font-medium uppercase tracking-wider text-muted">Available Cash Reserve</p>
           <p className="num mt-2 text-2xl font-bold text-fg">
-            {formatCurrency(proposal.currentCash)}
+            {proposal.feasibility === 'INFEASIBLE_CONSTRAINTS' ? 'N/A' : formatCurrency(proposal.currentCash)}
           </p>
           <div className="mt-2 flex items-center justify-between text-xs text-muted">
             <span>Policy Floor ({targetCashPct}%):</span>
@@ -725,10 +729,10 @@ export function PortfolioRebalancePanel({
 
             <button
               type="button"
-              disabled={proposal.orders.length === 0 || proposal.feasibility === 'INFEASIBLE_CASH_FLOOR'}
+              disabled={proposal.orders.length === 0 || proposal.feasibility === 'INFEASIBLE_CASH_FLOOR' || proposal.feasibility === 'INFEASIBLE_CONSTRAINTS'}
               onClick={handleExecuteBatch}
               className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold shadow-sm transition-colors ${
-                proposal.orders.length === 0 || proposal.feasibility === 'INFEASIBLE_CASH_FLOOR'
+                proposal.orders.length === 0 || proposal.feasibility === 'INFEASIBLE_CASH_FLOOR' || proposal.feasibility === 'INFEASIBLE_CONSTRAINTS'
                   ? 'border border-border bg-surface-2 text-muted cursor-not-allowed'
                   : 'bg-primary text-primary-fg hover:opacity-90 active:scale-95'
               }`}
@@ -744,7 +748,8 @@ export function PortfolioRebalancePanel({
             <CheckCircle2 className="size-6 text-emerald-400 mx-auto mb-2" />
             <p className="font-semibold text-fg">Portfolio In Alignment</p>
             <p className="mt-1">
-              No orders required. All positions are within the {DRIFT_TOLERANCE_PCT}% drift tolerance threshold.
+              {proposal.feasibility === 'INFEASIBLE_CONSTRAINTS' ? proposal.feasibilityMessage
+                : `No orders proposed; drift may be within ${DRIFT_TOLERANCE_PCT}% tolerance or constrained by lot sizing.`}
             </p>
           </div>
         ) : (
