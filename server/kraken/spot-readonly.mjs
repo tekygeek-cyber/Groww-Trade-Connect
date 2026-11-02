@@ -5,6 +5,13 @@ export const KRAKEN_KEY_INFO_PATH='/0/private/GetApiKeyInfo';
 // Explicitly allow only read-only Kraken Spot permissions. Trading and transfers are rejected.
 const READ_PERMISSIONS=new Set(['query-funds','query-open-trades','query-closed-trades','query-ledger','export-data']);
 
+let lastNonce=0;
+export function nextKrakenSpotNonce() {
+  const candidate=Math.max(Date.now(),lastNonce+1);
+  lastNonce=candidate;
+  return String(candidate);
+}
+
 export function validateKrakenSpotCredentialForm(value) {
   if(!value || typeof value!=='object'||Array.isArray(value) ||
       Object.keys(value).some(k=>!['apiKey','apiSecret','otp'].includes(k)) ||
@@ -47,7 +54,7 @@ export function classifyKrakenPermissions(input) {
 
 /** One-shot key verification only; key & secret discarded after this call. */
 export async function verifyKrakenSpotReadOnly(
-  credentials, {fetchImpl=fetch,nonce=String(Date.now())}={}
+  credentials, {fetchImpl=fetch,nonce=nextKrakenSpotNonce()}={}
 ) {
   const form=validateKrakenSpotCredentialForm(credentials);
   const body=new URLSearchParams({nonce});
@@ -72,6 +79,9 @@ export async function verifyKrakenSpotReadOnly(
   if(!data || !Array.isArray(data.error) || data.error.length ||
       !data.result || typeof data.result!=='object') {
     throw new Error('KRAKEN_AUTH_REJECTED');
+  }
+  if(typeof data.result.apiKey==='string' && data.result.apiKey!==form.apiKey) {
+    throw new Error('KRAKEN_ACCOUNT_KEY_MISMATCH');
   }
   const classification=classifyKrakenPermissions(data.result.permissions);
   if(!classification.safe) {
