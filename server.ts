@@ -47,7 +47,31 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws/ticks' });
 
-app.use(express.json());
+app.use(express.json({ limit: '256kb' }));
+
+// Fail-closed temporary gate: these legacy endpoints do not authenticate the
+// individual caller. Re-enable only with server-side authorization,
+// per-account isolation, idempotent order/fill reconciliation and integration tests.
+const unsafeMutations = new Set([
+  '/api/automation',
+  '/api/brokers/configure',
+  '/api/algo-orders/execute',
+  '/api/algo-orders/cancel',
+  '/api/algo-orders/gtt-state',
+  '/api/algo-orders/live-gtt',
+  '/api/adapter/failover/update',
+  '/api/adapter/failover/simulate',
+  '/api/adapter/failover/recover',
+]);
+app.use((req, res, next) => {
+  if (req.method === 'POST' && unsafeMutations.has(req.path)) {
+    res.status(503).json({
+      detail: 'Privileged state changes are disabled pending per-user authorization and audited broker reconciliation.',
+    });
+    return;
+  }
+  next();
+});
 
 // In-memory jobs store for scan background progress
 const jobs = new Map<string, ScanJob>();
