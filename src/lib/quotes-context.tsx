@@ -137,11 +137,16 @@ export function QuotesProvider({
     return () => clearInterval(timer);
   }, [market]);
 
-  // Seed initial quotes from constituents
+  // Synthetic prices are visible only in explicit sample mode.
   useEffect(() => {
+    if (!sample) {
+      setQuotes({});
+      setQuoteStatus('Delayed');
+      return;
+    }
     const list = getConstituents(market);
     const initial: Record<string, Quote> = {};
-    const baseStatus = sample ? 'Sample' : isSessionOpen ? 'Live' : 'Closed';
+    const baseStatus = 'Sample';
 
     list.forEach((item, idx) => {
       // Deterministic realistic initial prices
@@ -182,12 +187,12 @@ export function QuotesProvider({
         previousClose: Math.round(prevClose * 100) / 100,
         timestamp: Date.now(),
         status: baseStatus,
-        source: MARKETS[market].defaultDataSource,
+        source: 'Sample tape (generated illustration only)',
       };
     });
 
     setQuotes(initial);
-  }, [market, sample, isSessionOpen]);
+  }, [market, sample]);
 
   // Real-Time Streaming and Polling Engine
   useEffect(() => {
@@ -322,11 +327,7 @@ export function QuotesProvider({
 
     // 3. NASDAQ & US ETFs: Try Binance Equity or backend polling
     if (market === 'nasdaq' || market === 'etfs') {
-      if (!isSessionOpen) {
-        setQuoteStatus('Closed');
-      } else {
-        setQuoteStatus('Live');
-      }
+      setQuoteStatus('Delayed');
 
       // Backend quote polling fallback (15s interval)
       const fetchBackendQuotes = async () => {
@@ -345,31 +346,8 @@ export function QuotesProvider({
             }
           }
         } catch {
-          // If server polling fails, gently simulate live ticks if session is open
-          if (isSessionOpen) {
-            setQuotes((prev) => {
-              const next = { ...prev };
-              const keys = Object.keys(next);
-              for (let i = 0; i < Math.min(3, keys.length); i++) {
-                const sym = keys[Math.floor(Math.random() * keys.length)];
-                const q = next[sym];
-                if (!q) continue;
-                const delta = (Math.random() - 0.49) * 0.002;
-                const np = Math.round(q.price * (1 + delta) * 100) / 100;
-                next[sym] = {
-                  ...q,
-                  price: np,
-                  change: Math.round((np - q.previousClose) * 100) / 100,
-                  changePct: Math.round(((np - q.previousClose) / q.previousClose) * 10000) / 100,
-                  timestamp: Date.now(),
-                  status: 'Delayed',
-                  source: 'Stooq / Public ticker cache',
-                };
-              }
-              evaluateQuotes(next);
-              return next;
-            });
-          }
+          // Never animate fictitious prices in the authenticated workspace.
+          setQuoteStatus('Delayed');
         }
       };
 
@@ -397,10 +375,13 @@ export function QuotesProvider({
                 evaluateQuotes(merged);
                 return merged;
               });
+              setQuoteStatus(payload.status === 'Sample' ? 'Sample' : 'Delayed');
             }
+          } else {
+            setQuoteStatus('Delayed');
           }
         } catch {
-          // Keep existing prices
+          setQuoteStatus('Delayed');
         }
       };
 
