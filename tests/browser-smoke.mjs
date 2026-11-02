@@ -34,7 +34,7 @@ try {
     await page.getByRole('heading',{name:'Strategy lab'}).waitFor();
     await page.getByRole('tab',{name:'Algo Signals',exact:true}).click();
     await page.getByRole('button',{name:'AI Agent',exact:true}).click();
-    await page.getByRole('heading',{name:'AI market research agent'}).waitFor();
+    await page.getByRole('heading',{name:'AI market research team',exact:true}).waitFor();
     await page.getByRole('heading',{name:'Trading rehearsal'}).waitFor();
     assert.equal(await page.getByRole('button',{name:'Run risk rehearsal'}).isDisabled(),true);
     assert.equal(await page.getByRole('button',{name:'Run AI research'}).isDisabled(),true);
