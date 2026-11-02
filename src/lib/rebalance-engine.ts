@@ -633,14 +633,7 @@ export function planRebalanceOrders(
   if (conditionalCash < requiredCashFloor - 0.005) {
     feasibility = 'INFEASIBLE_CASH_FLOOR';
     feasibilityMessage = `Projected cash (${Math.round(conditionalCash)}) falls below the required ${targetCashPct}% reserve floor (${Math.round(requiredCashFloor)}).`;
-  } else if (analysisList.some((a) =>
-    Math.abs(a.targetWeightPct - (
-      ((a.currentShares + (orders.find(o => o.ticker === a.ticker)
-        ? (orders.find(o => o.ticker === a.ticker)!.side === 'BUY'
-          ? orders.find(o => o.ticker === a.ticker)!.quantityDelta
-          : -orders.find(o => o.ticker === a.ticker)!.quantityDelta)
-        : 0)) * a.refPrice) /
-      Math.max(totalNav - totalEstimatedFees, 0.01)) * 100) > DRIFT_TOLERANCE_PCT)) {
+  } else if (orders.length === 0 && analysisList.some(a => Math.abs(a.driftPct) > DRIFT_TOLERANCE_PCT)) {
     feasibility = 'PARTIAL_FEASIBLE';
     feasibilityMessage = 'Residual drift exists, but whole lot sizes or cash reserve prevented further orders.';
   }
@@ -680,6 +673,12 @@ export function planRebalanceOrders(
     market,
     targetCashPct
   );
+  // Report the remaining drift honestly after whole-lot sizing and fees.
+  if (feasibility === 'FEASIBLE' &&
+      projectedScore.unroundedDriftD * 100 > DRIFT_TOLERANCE_PCT + 1e-6) {
+    feasibility = 'PARTIAL_FEASIBLE';
+    feasibilityMessage = 'Some target drift remains after lot sizing, fees, and cash reserve constraints.';
+  }
 
   return {
     id: proposalId,
