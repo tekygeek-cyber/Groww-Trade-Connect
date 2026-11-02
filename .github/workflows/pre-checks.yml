@@ -24,3 +24,5 @@ jobs:
         run: bun run test:auth-integration
       - name: Rebalance rule and cash invariant tests
         run: bun run test:rebalance
+      - name: Currency and quote provenance tests
+        run: bun run test:market-integrity
