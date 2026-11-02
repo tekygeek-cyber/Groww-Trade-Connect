@@ -74,10 +74,10 @@ export function getConfiguredPublicOrigin(env = process.env) {
 /**
  * State-changing requests need a real matching browser Origin.
  *
- * A direct request must match Host and the transport scheme, as before.
- * For reverse proxies, an explicitly configured public Origin can also match
- * even when Host is a private upstream name. Both checks require an exact
- * origin; no arbitrary forwarded host header can grant access.
+ * Without a configured public origin, requests match Host and transport
+ * scheme exactly, as before. For reverse proxies, a configured public Origin
+ * replaces Host as the sole trusted comparison. An untrusted forwarded Host
+ * cannot grant access.
  */
 export function isSameOrigin(origin, host, secure, publicOrigin = null) {
   const url = parseOrigin(origin);
@@ -90,7 +90,9 @@ export function isSameOrigin(origin, host, secure, publicOrigin = null) {
     configured = parseOrigin(publicOrigin);
     if (!configured || (secure && configured.protocol !== 'https:')) return false;
   }
-  if (configured && url.origin === configured.origin) return true;
+  // When a public deployment Origin is configured, it is the sole authority:
+  // never fall back to an untrusted Host header in that mode.
+  if (configured) return url.origin === configured.origin;
 
   return typeof host === 'string' && host.length > 0 &&
     url.protocol === (secure ? 'https:' : 'http:') &&
