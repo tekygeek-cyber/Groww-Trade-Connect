@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   generateSessionId, hashSessionId, matchesSessionId, readSessionCookie,
-  makeSessionCookie, makeClearSessionCookie, isSameOrigin,
+  makeSessionCookie, makeClearSessionCookie, isSameOrigin, getConfiguredPublicOrigin,
 } from '../server/session-policy.mjs';
 import { isAnonymousApiAllowed } from '../server/api-access.mjs';
 
@@ -45,4 +45,51 @@ test('sensitive API routes are private by default', () => {
   assert.equal(isAnonymousApiAllowed('GET', '/api/auth/status'), true);
   assert.equal(isAnonymousApiAllowed('POST', '/api/demo/scan'), true);
   assert.equal(isAnonymousApiAllowed('GET', '/api/quotes/nifty'), true);
+});
+
+test('reverse-proxy public Origin allows legitimate POSTs with private upstream Host',()=>{
+  assert.equal(isSameOrigin('https://trade.example.test','internal-service:3000',true,
+    'https://trade.example.test'),true);
+  assert.equal(isSameOrigin('https://trade.example.test','internal-service:3000',false,
+    'https://trade.example.test'),true);
+  assert.equal(isSameOrigin('https://trade.example.test','trade.example.test',true),true);
+  assert.equal(isSameOrigin('https://attacker.example.test','attacker.example.test',true,
+    'https://trade.example.test'),false);
+});
+
+test('explicit public origin rejects cross-site, downgrade, forged and invalid origins',()=>{
+  const publicOrigin='https://trade.example.test';
+  for(const bad of [
+    'https://evil.example.test','https://trade.example.test.evil.net',
+    'http://trade.example.test','null','https://trade.example.test/evil',
+    'https://trade.example.test?secret=x','https://trade.example.test#fragment',
+    'https://trade.example.test@evil.example.test',
+    'https://evil.example.test https://trade.example.test',undefined,
+  ]){
+    assert.equal(isSameOrigin(bad,'internal-service:3000',true,publicOrigin),false,
+      String(bad));
+  }
+});
+
+test('invalid admin-provided public origin fails closed even when Host matches',()=>{
+  for(const invalid of [
+    'https://trade.example.test/other','http://trade.example.test',
+    'https://*.example.test','https://user:pass@trade.example.test',
+    'https://trade.example.test https://evil.example.test'
+  ]){
+    assert.equal(isSameOrigin('https://trade.example.test','trade.example.test',true,invalid),
+      false,invalid);
+  }
+});
+
+test('APP_PUBLIC_ORIGIN overrides APP_URL and fallback supports injected hosting URL',()=>{
+  assert.equal(getConfiguredPublicOrigin({
+    APP_PUBLIC_ORIGIN:'https://trade.example.test',
+    APP_URL:'https://other.example.test'}),'https://trade.example.test');
+  assert.equal(getConfiguredPublicOrigin({APP_URL:'https://cloud-run.example.test'}),
+    'https://cloud-run.example.test');
+  assert.equal(getConfiguredPublicOrigin({APP_URL:'MY_APP_URL'}),null);
+  assert.equal(getConfiguredPublicOrigin({}),null);
+  assert.equal(getConfiguredPublicOrigin({APP_PUBLIC_ORIGIN:'https://trade.example.test/path'}),
+    'https://trade.example.test/path'); // invalid explicit configuration is rejected by isSameOrigin
 });

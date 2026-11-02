@@ -71,3 +71,19 @@ jobs:
           curl -fsS http://127.0.0.1:3010/ | grep -q '<title>Groww Connect</title>'
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3010/api/profile)" = "401"
           echo "PASS: compiled Node entrypoint serves app shell and denies anonymous profile"
+
+      - name: Production reverse-proxy Origin authentication regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_ENV=production APP_PUBLIC_ORIGIN=https://trade.example.test PORT=3011 node dist/server.js > /tmp/gtc-proxy.log 2>&1 &
+          PID=$!
+          trap 'kill $PID || true; cat /tmp/gtc-proxy.log' EXIT
+          ready=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3011/api/health > /dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then echo "Proxy-mode server unavailable"; exit 1; fi
+          TEST_BASE_URL=http://127.0.0.1:3011 node --test tests/proxy-origin-smoke.mjs
+

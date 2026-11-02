@@ -143,6 +143,12 @@ npm run test:ai-harness
 
 The project includes a sample/demo flow for testing the platform without a fully authenticated session. This is useful for evaluating the trading desk, analysis engine, and UI in an easy-to-run environment.
 
+## API-key login behind a reverse proxy
+
+If the login screen says **"A matching request Origin is required"**, configure `APP_PUBLIC_ORIGIN` on the Node hosting service to the application's **exact public HTTPS origin** (e.g. `https://desk.example.com`), then restart the server. Hosted environments with a valid `APP_URL` use it automatically. The error is produced by the app's CSRF guard **before broker authentication**, not by an incorrect API key.
+
+[Detailed setup and credential-free verification](docs/PROXY_ORIGIN_LOGIN_FIX.md)
+
 ## Security and Operational Notes
 
 - API routes enforce origin validation and session checks
