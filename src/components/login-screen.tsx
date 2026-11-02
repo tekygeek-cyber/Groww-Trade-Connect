@@ -9,28 +9,6 @@ const fieldClass =
 
 const SAVED_LOGIN_KEY = 'groww-connect-login';
 
-type SavedLogin = {
-  apiKey: string;
-  apiSecret: string;
-  requestToken: string;
-};
-
-function readSavedLogin(): SavedLogin | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(SAVED_LOGIN_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw) as Partial<SavedLogin>;
-    return {
-      apiKey: typeof data.apiKey === 'string' ? data.apiKey : '',
-      apiSecret: typeof data.apiSecret === 'string' ? data.apiSecret : '',
-      requestToken: typeof data.requestToken === 'string' ? data.requestToken : '',
-    };
-  } catch {
-    return null;
-  }
-}
-
 export function LoginScreen({ onEnterDesk }: { onEnterDesk: (sample: boolean) => void }) {
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
@@ -40,18 +18,11 @@ export function LoginScreen({ onEnterDesk }: { onEnterDesk: (sample: boolean) =>
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [savedNote, setSavedNote] = useState<string | null>(null);
   const [apiState, setApiState] = useState<'checking' | 'up' | 'down'>('checking');
 
   useEffect(() => {
-    const saved = readSavedLogin();
-    if (!saved) return;
-    setApiKey(saved.apiKey);
-    setApiSecret(saved.apiSecret);
-    setRequestToken(saved.requestToken);
-    if (saved.apiKey || saved.apiSecret || saved.requestToken) {
-      setSavedNote('Saved details loaded from this browser.');
-    }
+    // Purge credentials saved by previous versions; never persist broker secrets in web storage.
+    try { localStorage.removeItem(SAVED_LOGIN_KEY); } catch {}
   }, []);
 
   useEffect(() => {
@@ -73,30 +44,6 @@ export function LoginScreen({ onEnterDesk }: { onEnterDesk: (sample: boolean) =>
       cancel = true;
     };
   }, [onEnterDesk]);
-
-  function saveDetails() {
-    const details: SavedLogin = {
-      apiKey: apiKey.trim(),
-      apiSecret: apiSecret.trim(),
-      requestToken: requestToken.trim(),
-    };
-    if (!details.apiKey && !details.apiSecret && !details.requestToken) {
-      setError('Enter the details you want to keep, then press Save.');
-      return;
-    }
-    localStorage.setItem(SAVED_LOGIN_KEY, JSON.stringify(details));
-    setSavedNote('Details stored in this browser for quick sign in.');
-    setError(null);
-  }
-
-  function clearDetails() {
-    localStorage.removeItem(SAVED_LOGIN_KEY);
-    setApiKey('');
-    setApiSecret('');
-    setRequestToken('');
-    setSavedNote(null);
-    setError(null);
-  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -157,11 +104,6 @@ export function LoginScreen({ onEnterDesk }: { onEnterDesk: (sample: boolean) =>
             </p>
           ) : null}
 
-          {savedNote ? (
-            <p className="mt-4 rounded-lg border border-border bg-surface-2 px-4 py-2 text-xs text-muted">
-              {savedNote}
-            </p>
-          ) : null}
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
@@ -251,22 +193,6 @@ export function LoginScreen({ onEnterDesk }: { onEnterDesk: (sample: boolean) =>
                 {busy ? 'Authenticating…' : 'Sign in to Groww Desk'}
               </button>
 
-              <button
-                type="button"
-                onClick={saveDetails}
-                className="h-11 rounded-lg border border-border px-3 text-xs text-muted hover:bg-surface-2 hover:text-fg"
-              >
-                Save
-              </button>
-              {savedNote ? (
-                <button
-                  type="button"
-                  onClick={clearDetails}
-                  className="h-11 rounded-lg border border-border px-3 text-xs text-muted hover:bg-surface-2 hover:text-fg"
-                >
-                  Clear
-                </button>
-              ) : null}
             </div>
           </form>
 
