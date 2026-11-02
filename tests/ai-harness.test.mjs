@@ -120,3 +120,10 @@ test('Ollama adapter forwards tool calls without execution',async()=>{
  assert.equal(sent.stream,false);
  assert.equal(sent.tools[0].function.name,'read');
 });
+
+test('latest complete tool batch cannot silently disappear from model context', () => {
+  const group=[{role:'user',content:'short'},
+    {role:'assistant',content:'',toolCalls:[call('a','read')]},
+    {role:'tool',callId:'a',name:'read',content:'x'.repeat(2000),isError:false}];
+  assert.throws(()=>selectAgentContext(group,200),/Latest complete tool batch/);
+});
