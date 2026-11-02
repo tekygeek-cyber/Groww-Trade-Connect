@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { Profile, SessionStatus, GttRow, AutoState } from '../src/types/market';
+import { getNext6AmIst as calculateSessionExpiry, requireBrokerAccessToken } from './auth-policy.mjs';
 
 const DATA_DIR = path.resolve(process.cwd(), 'server', 'data');
 const SESSION_PATH = path.join(DATA_DIR, 'session.json');
@@ -14,10 +15,7 @@ function ensureDataDir() {
 }
 
 export function getNext6AmIst(now: Date = new Date()): Date {
-  // 06:00 IST = 00:30 UTC; avoid host-local timezone methods.
-  const shifted = new Date(now.getTime() + 330 * 60_000);
-  const day = shifted.getUTCDate() + (shifted.getUTCHours() >= 6 ? 1 : 0);
-  return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), day, 0, 30));
+  return calculateSessionExpiry(now);
 }
 
 export type StoredSession = {
@@ -31,7 +29,7 @@ let memorySession: StoredSession | null = null;
 
 export function readSession(): StoredSession | null {
   if (memorySession) {
-    if (new Date() >= new Date(memorySession.expiresAt)) {
+    if (memorySession.accessToken.startsWith('groww_token_') || new Date() >= new Date(memorySession.expiresAt)) {
       memorySession = null;
     } else {
       return memorySession;
@@ -44,7 +42,7 @@ export function readSession(): StoredSession | null {
   try {
     const raw = fs.readFileSync(SESSION_PATH, 'utf-8');
     const data: StoredSession = JSON.parse(raw);
-    if (!data.accessToken || !data.expiresAt) return null;
+    if (!data.accessToken || !data.expiresAt || data.accessToken.startsWith('groww_token_')) return null;
 
     if (new Date() >= new Date(data.expiresAt)) {
       try {
@@ -126,11 +124,8 @@ export async function loginGroww(body: { apiKey?: string; apiSecret?: string; re
   let data: unknown;
   try { data = await response.json(); }
   catch { throw new Error('Invalid Groww authentication response.'); }
-  if (!data || typeof data !== 'object' || !('access_token' in data) ||
-      typeof data.access_token !== 'string' || !data.access_token.trim()) {
-    throw new Error('Groww did not return an access token. No session was created.');
-  }
-  const session = writeSession(data.access_token, flow);
+  const brokerToken = requireBrokerAccessToken(response.status, data);
+  const session = writeSession(brokerToken, flow);
   return { authenticated: true, expires_at: session.expiresAt, flow: session.flow };
 }
 
