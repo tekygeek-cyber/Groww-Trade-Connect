@@ -16,7 +16,8 @@
     "test:market-integrity": "tsx --test tests/market-integrity.test.ts tests/market-data-integrity.test.ts",
     "test:ai-harness": "node --test tests/ai-harness.test.mjs",
     "test:risk-gate": "tsx --test tests/risk-gate.test.ts",
-    "test:mock-broker": "tsx --test tests/mock-broker.test.ts"
+    "test:mock-broker": "tsx --test tests/mock-broker.test.ts",
+    "test:kraken-readonly": "node --test tests/kraken-spot-readonly.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
