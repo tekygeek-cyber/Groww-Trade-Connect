@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { ProposedOrder,GateResult } from './risk-gate';
 
 export type MockScenario = 'FILL' | 'ACK_ONLY' | 'PARTIAL' | 'REJECT' | 'TIMEOUT';
@@ -12,8 +12,14 @@ export interface MockAck {
  * CONTRACT FIXTURE ONLY. No network socket, broker SDK, vault, or external API.
  * Tests broker response handling; never connect this adapter to a production order route.
  */
+const orderIdentity=(order:ProposedOrder):string=>createHash('sha256').update(JSON.stringify([
+  order.requestId,order.userId,order.accountId,order.market,order.symbol,
+  order.side,order.quantity,order.orderType,order.limitPrice??null,
+  order.stopPrice??null,order.timeInForce,order.strategyId,order.executionMode,
+])).digest('hex');
+
 export class MockBrokerContract {
-  private readonly orders=new Map<string,Readonly<MockAck>>();
+  private readonly orders=new Map<string,{fingerprint:string;ack:Readonly<MockAck>}>();
   private readonly now:()=>string;
   constructor(now:()=>string=()=>new Date().toISOString()){this.now=now;}
   submit(order:ProposedOrder,gate:GateResult,scenario:MockScenario='FILL'):Readonly<MockAck> {
@@ -22,7 +28,14 @@ export class MockBrokerContract {
       throw new Error('RISK_GATE_NOT_PASSED');
     if(!['FILL','ACK_ONLY','PARTIAL','REJECT','TIMEOUT'].includes(scenario))
       throw new TypeError('Unknown broker contract scenario');
-    if(this.orders.has(order.requestId)) return this.orders.get(order.requestId)!;
+    // Repeated keys are valid only for the exact same original order. Returning
+    // an earlier ACK for a mutated price/quantity would conceal an unsafe replay.
+    const fingerprint=orderIdentity(order);
+    const existing=this.orders.get(order.requestId);
+    if(existing){
+      if(existing.fingerprint!==fingerprint) throw new Error('MOCK_IDEMPOTENCY_CONFLICT');
+      return existing.ack;
+    }
     const id='MOCK-'+randomUUID();
     const state:MockOrderState=scenario==='REJECT'?'REJECTED':scenario==='TIMEOUT'?
       'UNKNOWN_REQUIRES_RECONCILIATION':scenario==='ACK_ONLY'?'ACKNOWLEDGED':
@@ -40,9 +53,9 @@ export class MockBrokerContract {
       state,filledQuantity:filled,remainingQuantity:order.quantity-filled,
       events:Object.freeze(events)
     });
-    this.orders.set(order.requestId,result);
+    this.orders.set(order.requestId,{fingerprint,ack:result});
     return result;
   }
-  status(requestId:string):Readonly<MockAck>|null{return this.orders.get(requestId)||null;}
+  status(requestId:string):Readonly<MockAck>|null{return this.orders.get(requestId)?.ack||null;}
   reset(){this.orders.clear();}
 }
