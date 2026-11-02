@@ -67,7 +67,9 @@ export function LoginScreen({ onEnterDesk }: { onEnterDesk: (sample: boolean) =>
         setError('Authentication was not successful.');
       }
     } catch (err: any) {
-      setError(err instanceof Error ? err.message : 'Sign in failed.');
+      setError(err instanceof Error && err.message.includes('A matching request Origin is required')
+        ? 'This application is behind a proxy whose internal Host differs from its public URL. Set APP_PUBLIC_ORIGIN on the app server to the exact HTTPS address displayed in your browser, then restart the service. Authentication was not attempted.'
+        : err instanceof Error ? err.message : 'Sign in failed.');
     } finally {
       setBusy(false);
     }
