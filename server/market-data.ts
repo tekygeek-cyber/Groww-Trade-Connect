@@ -48,11 +48,10 @@ export async function fetchHistoricalCandles(
     } else if (market === 'nasdaq' || market === 'etfs') {
       result = await fetchStooqOrYahooCandles(ticker);
     } else if (market === 'nifty') {
-      // Nifty 100 uses sample tape if Groww is not authenticated
-      result = {
-        candles: getSampleCandles('nifty', ticker),
-        source: 'Saved Nifty tape',
-      };
+      // No verified NSE/Groww historical provider wired up yet.
+      // Never misrepresent generated candles as an authenticated market feed.
+      throw new Error('Verified Nifty candle feed unavailable; use explicit sample mode');
+
     }
 
     if (result && result.candles.length >= 25) {
@@ -65,17 +64,13 @@ export async function fetchHistoricalCandles(
     }
   } catch {
     // Fall back to existing cached copy if available
-    if (cached) {
+    if (cached && !/sample|saved nifty|synthetic/i.test(cached.source)) {
       return { candles: cached.data, source: 'Showing the last saved tape' };
     }
   }
 
-  // Final fallback to synthetic sample tape
-  const fallback = getSampleCandles(market, ticker);
-  return {
-    candles: fallback,
-    source: 'Live tape unavailable. Showing the sample tape.',
-  };
+  // Live mode fails closed. Synthetic candles exist only behind sample=true.
+  throw new Error(`Verified ${market} historical candles unavailable for ${ticker}`);
 }
 
 async function fetchKrakenCryptoCandles(symbol: string): Promise<{ candles: Candle[]; source: string }> {
