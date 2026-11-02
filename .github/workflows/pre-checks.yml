@@ -34,6 +34,8 @@ jobs:
         run: bun run test:risk-gate
       - name: Offline broker contract test (no external orders)
         run: bun run test:mock-broker
+      - name: Kraken Spot read-only credential diagnostic tests
+        run: bun run test:kraken-readonly
       - name: Install headless browser smoke harness
         run: |
           npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps playwright
