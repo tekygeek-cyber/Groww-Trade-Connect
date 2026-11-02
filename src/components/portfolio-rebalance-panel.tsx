@@ -422,7 +422,7 @@ export function PortfolioRebalancePanel({
           <div>
             <h3 className="text-base font-semibold text-fg">Target Allocation Model</h3>
             <p className="mt-0.5 text-xs text-muted">
-              Select an algorithmic preset or lock custom percentage weights with auto-normalization to 100%.
+              Equal Weight and custom allocations are available. Market Cap and Momentum require verified inputs.
             </p>
           </div>
 
@@ -442,25 +442,17 @@ export function PortfolioRebalancePanel({
               </button>
               <button
                 type="button"
-                onClick={() => setActivePreset('market_cap')}
-                className={
-                  'rounded px-3 py-1 transition-colors ' +
-                  (activePreset === 'market_cap'
-                    ? 'bg-primary text-primary-fg font-semibold'
-                    : 'text-muted hover:text-fg')
-                }
+                disabled
+                title="Unavailable until verified constituent market capitalizations are integrated"
+                className="rounded px-3 py-1 text-muted/50 cursor-not-allowed"
               >
                 Market Cap
               </button>
               <button
                 type="button"
-                onClick={() => setActivePreset('momentum_tilt')}
-                className={
-                  'rounded px-3 py-1 transition-colors ' +
-                  (activePreset === 'momentum_tilt'
-                    ? 'bg-primary text-primary-fg font-semibold'
-                    : 'text-muted hover:text-fg')
-                }
+                disabled
+                title="Unavailable until validated momentum windows and lookback datasets are integrated"
+                className="rounded px-3 py-1 text-muted/50 cursor-not-allowed"
               >
                 Momentum / Alpha Tilt
               </button>
