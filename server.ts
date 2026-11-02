@@ -25,6 +25,7 @@ import { isPrivilegedMutationBlocked } from './server/security-policy.mjs';
 import { isAnonymousApiAllowed } from './server/api-access.mjs';
 import { isSameOrigin, makeClearSessionCookie, makeSessionCookie, readSessionCookie } from './server/session-policy.mjs';
 import { getAiStatus,validateAiRequest,allowAiRequest,researchWithAi } from './server/ai/research-service.mjs';
+import { parseRehearsalInput, runTradingRehearsal, readRehearsalAudits } from './server/trading/rehearsal';
 import { fetchMarketNewsForSignals, fetchMarketNews } from './server/news-service';
 import {
   getAllBrokersStatus,
@@ -125,6 +126,40 @@ app.post('/api/ai/research', async (req,res) => {
   } catch(err) {
     res.status(422).json({detail:err instanceof Error?err.message.slice(0,220):'Verified AI research unavailable'});
   }
+});
+
+// Deterministic order-risk rehearsals. These endpoints NEVER invoke a broker
+// and NEVER mutate a real or user-backed account. Caller-bound session enforced above.
+const rehearsalThrottle=new Map<string,number>();
+app.get('/api/trading/capabilities',(_req,res)=>{
+  res.setHeader('Cache-Control','no-store');
+  res.json({riskGate:'DETERMINISTIC_REHEARSAL',fixture:'MOCK_ACCOUNT_V1',
+    paperOrdersEnabled:false,liveOrdersEnabled:false,
+    brokerCredentialIntake:false,realAccountData:false,
+    supports:['NSE','NASDAQ','CRYPTO'],note:'Simulation only; no real orders or broker connections'});
+});
+app.post('/api/trading/rehearsal',(req,res)=>{
+  res.setHeader('Cache-Control','no-store');
+  const caller=readSessionCookie(req.headers.cookie);
+  if(!caller || !readSession(caller)) return res.status(401).json({detail:'Authenticated session required'});
+  const now=Date.now();
+  for(const [key,time] of rehearsalThrottle) if(time+10000<now) rehearsalThrottle.delete(key);
+  if((rehearsalThrottle.get(caller)||0)+10000>now) return res.status(429).json({detail:'Rehearsal may run once every 10 seconds'});
+  try {
+    const input=parseRehearsalInput(req.body);
+    // Even mode=LIVE returns BLOCK; there is no broker order adapter here.
+    const output=runTradingRehearsal(input);
+    rehearsalThrottle.set(caller,now);
+    return res.json(output);
+  } catch(error) {
+    if(error instanceof TypeError) return res.status(400).json({detail:error.message});
+    return res.status(503).json({detail:'Rehearsal audit unavailable; no action executed'});
+  }
+});
+app.get('/api/trading/audit',(req,res)=>{
+  res.setHeader('Cache-Control','no-store');
+  try { res.json({records:readRehearsalAudits(40),simulationOnly:true}); }
+  catch { res.status(503).json({detail:'Audit integrity check failed; no trading actions permitted'}); }
 });
 
 // DataAdapter & Liveliness Monitoring Endpoints
