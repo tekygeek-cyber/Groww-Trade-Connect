@@ -11,6 +11,11 @@ try {
 
     await page.goto(base + '/', { waitUntil: 'domcontentloaded' });
     await page.getByRole('heading', { name: 'Access your research desk' }).waitFor();
+    await page.getByRole('heading', { name: 'Kraken Spot · API security check' }).waitFor();
+    await page.getByRole('button',{name:'Verify read-only key'}).click();
+    await page.getByLabel('Kraken Spot API secret').waitFor();
+    assert.equal(await page.getByRole('button',{name:'Verify once'}).isDisabled(),true);
+
     assert.equal(await page.evaluate(() => localStorage.getItem('groww-connect-login')), null);
 
     await page.goto(base + '/?sample=true', { waitUntil: 'domcontentloaded' });
