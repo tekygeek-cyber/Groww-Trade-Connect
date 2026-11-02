@@ -14,6 +14,7 @@ const PUBLIC_GET = new Set([
 ]);
 const PUBLIC_POST = new Set([
   '/api/auth/login',
+  '/api/kraken/check-readonly',
   '/api/demo/scan',
 ]);
 
