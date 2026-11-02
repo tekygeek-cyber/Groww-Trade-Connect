@@ -28,6 +28,18 @@ test('sample, generated, and saved candles cannot produce a valid SMA', () => {
     assert.equal(deriveCompletedDailyTrend(candles,source,testNow),null);
   }
 });
+test('in-progress bar is excluded when 50 earlier completed bars exist', () => {
+  const intraday = {
+    ...candles[49],
+    date: '2026-11-02',
+    close: 999999,
+  };
+  const trend = deriveCompletedDailyTrend([...candles, intraday],
+    'Daily candles: Stooq', testNow, 'nasdaq');
+  assert.ok(trend);
+  assert.equal(trend!.sma20, 139.5);
+});
+
 test('less than 50 bars, duplicate dates or an in-progress date are rejected', () => {
   assert.equal(deriveCompletedDailyTrend(candles.slice(-49),'Daily candles: Stooq',testNow),null);
   assert.equal(deriveCompletedDailyTrend([...candles, {...candles[0]}],'Daily candles: Stooq',testNow),null);
@@ -45,6 +57,7 @@ test('unsourced, future and synthetic quotes cannot generate orders', () => {
   const base = {price:100, source:'Daily candles: Stooq', status:'Delayed' as const, timestamp:testNow.getTime() };
   assert.equal(isTrustedMark(base,testNow.getTime()),true);
   assert.equal(isTrustedMark({...base,source:'Sample tape'},testNow.getTime()),false);
+  assert.equal(isTrustedMark({...base,source:'Unknown private data'},testNow.getTime()),false);
   assert.equal(isTrustedMark({...base,status:'Sample'},testNow.getTime()),false);
   assert.equal(isTrustedMark({...base,timestamp:undefined},testNow.getTime()),false);
   assert.equal(isTrustedMark({...base,timestamp:testNow.getTime()+120000},testNow.getTime()),false);
