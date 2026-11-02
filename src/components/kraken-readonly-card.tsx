@@ -28,8 +28,10 @@ export function KrakenReadOnlyCard() {
         method:'POST',body:JSON.stringify({apiKey:key,apiSecret:secret,...(otp?{otp}:{})})
       });
       setResult(response);
-    }catch{
-      setError('Verification failed or permissions are unsafe. Check the key scope and retry later.');
+    }catch(e){
+      setError(e instanceof Error && e.message.includes('A matching request Origin is required')
+        ? 'This deployment needs APP_PUBLIC_ORIGIN set to its exact public HTTPS URL on the server. The request was rejected before contacting Kraken.'
+        : 'Verification failed or permissions are unsafe. Check the key scope and retry later.');
     }finally {
       // Browser credentials are used once and never kept for a second request.
       setKey('');setSecret('');setOtp('');setChecking(false);
