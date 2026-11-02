@@ -51,6 +51,12 @@ import { MARKETS } from '../data/universes';
 
 const AUDIT_STORAGE_KEY = 'groww_rebalance_audit_snapshots_v2';
 
+function canExecutePaperPlan(plan: RebalancePlanProposal): boolean {
+  return plan.orders.length > 0 &&
+    (plan.feasibility === 'FEASIBLE' || plan.feasibility === 'PARTIAL_FEASIBLE');
+}
+
+
 export function PortfolioRebalancePanel({
   initialMarket,
   selectedCurrency,
@@ -169,8 +175,7 @@ export function PortfolioRebalancePanel({
 
   // Execute paper rebalance batch
   function handleExecuteBatch() {
-    if (proposal.orders.length === 0 || proposal.feasibility === 'INFEASIBLE_CASH_FLOOR' || proposal.feasibility === 'INFEASIBLE_CONSTRAINTS' ||
-        proposal.feasibility === 'INFEASIBLE_CONSTRAINTS') return;
+    if (!canExecutePaperPlan(proposal)) return;
 
     const { updatedHoldings, updatedCash, batchExecution } = reconcilePaperFills(
       holdings,
@@ -729,10 +734,10 @@ export function PortfolioRebalancePanel({
 
             <button
               type="button"
-              disabled={proposal.orders.length === 0 || proposal.feasibility === 'INFEASIBLE_CASH_FLOOR' || proposal.feasibility === 'INFEASIBLE_CONSTRAINTS'}
+              disabled={!canExecutePaperPlan(proposal)}
               onClick={handleExecuteBatch}
               className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold shadow-sm transition-colors ${
-                proposal.orders.length === 0 || proposal.feasibility === 'INFEASIBLE_CASH_FLOOR' || proposal.feasibility === 'INFEASIBLE_CONSTRAINTS'
+                !canExecutePaperPlan(proposal)
                   ? 'border border-border bg-surface-2 text-muted cursor-not-allowed'
                   : 'bg-primary text-primary-fg hover:opacity-90 active:scale-95'
               }`}
