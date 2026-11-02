@@ -14,7 +14,9 @@
     "test:auth-integration": "tsx --test tests/groww-auth.test.ts",
     "test:rebalance": "tsx --test tests/rebalance-guards.test.ts",
     "test:market-integrity": "tsx --test tests/market-integrity.test.ts tests/market-data-integrity.test.ts",
-    "test:ai-harness": "node --test tests/ai-harness.test.mjs"
+    "test:ai-harness": "node --test tests/ai-harness.test.mjs",
+    "test:risk-gate": "tsx --test tests/risk-gate.test.ts",
+    "test:mock-broker": "tsx --test tests/mock-broker.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BrainCircuit, ShieldCheck, Play, AlertTriangle, Activity, Clock3, Cpu, ClipboardCheck, Database, LockKeyhole } from 'lucide-react';
 import { api } from '../lib/api';
+import { TradingRehearsalPanel } from './trading-rehearsal-panel';
 import { getConstituents } from '../data/universes';
 import type { MarketType } from '../types/market';
 
@@ -138,6 +139,7 @@ export function AiModePanel({ market, sample }: {market: MarketType;sample:boole
           <p className="flex items-start gap-2 text-xs text-watch"><ShieldCheck className="size-4 shrink-0" /> {result.disclaimer}</p>
         </div>
       )}
+      <TradingRehearsalPanel market={market} symbol={symbol} sample={sample} />
       <p className="text-xs text-muted">The model can be inaccurate. Historical experiments do not establish future profitability. No autonomous order submission or code execution.</p>
     </section>
   );

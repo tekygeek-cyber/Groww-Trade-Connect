@@ -21,7 +21,7 @@ afterEach(() => {
 const validCredentials = { apiKey: 'test', apiSecret: 'test' };
 const mockSuccess = () => {
   globalThis.fetch = (async () => new Response(
-    JSON.stringify({ access_token: 'test_broker_token' }), { status: 200 }
+    JSON.stringify({ token: 'test_broker_token' }), { status: 200 }
   )) as typeof fetch;
 };
 
@@ -99,4 +99,43 @@ test('legacy session without binding is ignored', async () => {
   }));
   assert.equal(getPublicSessionStatus().authenticated, false);
   assert.equal(getPublicSessionStatus('any').authenticated, false);
+});
+
+test('Groww API-secret approval uses official checksum and endpoint, never raw secret in body',async()=>{
+  let endpoint='';let headers:Headers|undefined;let payload:Record<string,string>={};
+  globalThis.fetch=(async(url,options)=>{
+    endpoint=String(url);
+    headers=new Headers(options?.headers);
+    payload=JSON.parse(String(options?.body));
+    return new Response(JSON.stringify({token:'approved_broker_token'}),{status:200});
+  }) as typeof fetch;
+  const {sessionId}=await loginGroww(validCredentials);
+  ownerSessionId=sessionId;
+  assert.equal(endpoint,'https://api.groww.in/v1/token/api/access');
+  assert.equal(headers?.get('Authorization'),'Bearer test');
+  assert.equal(headers?.get('X-API-VERSION'),'1.0');
+  assert.equal(payload.key_type,'approval');
+  assert.equal(payload.checksum.length,64);
+  assert.ok(/^\d{10}$/.test(payload.timestamp));
+  assert.ok(!JSON.stringify(payload).includes('api_secret'));
+  assert.ok(!JSON.stringify(payload).includes('test'));
+});
+test('Groww TOTP flow sends six-digit code but never repeats raw API key in request body',async()=>{
+  let payload:Record<string,string>={};
+  globalThis.fetch=(async(_url,options)=>{
+    payload=JSON.parse(String(options?.body));
+    return new Response(JSON.stringify({token:'totp_broker_token'}),{status:200});
+  }) as typeof fetch;
+  const {sessionId}=await loginGroww({apiKey:'user_key',requestToken:'123456'});
+  ownerSessionId=sessionId;
+  assert.deepEqual(payload,{key_type:'totp',totp:'123456'});
+  assert.equal(getPublicSessionStatus(sessionId).authenticated,true);
+});
+test('invalid TOTP code fails before network request',async()=>{
+  globalThis.fetch=(async()=>{throw new Error('should not call network');}) as typeof fetch;
+  await assert.rejects(loginGroww({apiKey:'user_key',requestToken:'123'}),/six digits/);
+});
+test('legacy or malformed token payload cannot establish account session',async()=>{
+  globalThis.fetch=(async()=>new Response(JSON.stringify({access_token:'legacy_broker_token'}),{status:200})) as typeof fetch;
+  await assert.rejects(loginGroww(validCredentials),/valid access token/);
 });

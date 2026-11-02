@@ -51,3 +51,15 @@ test('AI research requires authentication and matching Origin',async()=>{
     headers:{Origin:'https://malicious.example','content-type':'application/json'},body:'{}'});
   assert.equal(attack.status,403);
 });
+
+test('unauthenticated rehearsal and audit remain private',async()=>{
+  for(const route of ['/api/trading/capabilities','/api/trading/audit']){
+    const result=await fetch(base+route);
+    assert.equal(result.status,401,route);
+  }
+  const res=await fetch(base+'/api/trading/rehearsal',{
+    method:'POST',headers:{Origin:base,'Content-Type':'application/json'},
+    body:JSON.stringify({market:'NASDAQ',symbol:'AAPL',side:'BUY',quantity:1,price:100,mode:'LIVE'})
+  });
+  assert.equal(res.status,401);
+});

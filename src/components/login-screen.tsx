@@ -60,6 +60,7 @@ export function LoginScreen({ onEnterDesk }: { onEnterDesk: (sample: boolean) =>
         body: JSON.stringify(payload),
       });
       if (res.authenticated) {
+        setApiKey(''); setApiSecret(''); setRequestToken('');
         onEnterDesk(false);
       } else {
         setError('Authentication was not successful.');
@@ -148,7 +149,7 @@ export function LoginScreen({ onEnterDesk }: { onEnterDesk: (sample: boolean) =>
             <div>
               <div className="flex items-center justify-between">
                 <label htmlFor="apiSecret" className="block text-xs font-medium text-muted uppercase tracking-wider">
-                  API Secret (Flow 1)
+                  API Secret — daily approval flow
                 </label>
                 <span className="text-[11px] text-muted">API Secret flow</span>
               </div>
@@ -182,7 +183,7 @@ export function LoginScreen({ onEnterDesk }: { onEnterDesk: (sample: boolean) =>
             <div>
               <div className="flex items-center justify-between">
                 <label htmlFor="requestToken" className="block text-xs font-medium text-muted uppercase tracking-wider">
-                  TOTP Code / Request Token (Flow 2)
+                  TOTP code — authenticator flow
                 </label>
                 <span className="text-[11px] text-muted">6-digit TOTP</span>
               </div>
@@ -193,8 +194,11 @@ export function LoginScreen({ onEnterDesk }: { onEnterDesk: (sample: boolean) =>
                   value={requestToken}
                   onChange={(e) => setRequestToken(e.target.value)}
                   placeholder="6-digit authenticator code"
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
                   className={fieldClass}
-                  autoComplete="off"
+                  autoComplete="one-time-code"
                 />
                 <button
                   type="button"
@@ -239,7 +243,7 @@ export function LoginScreen({ onEnterDesk }: { onEnterDesk: (sample: boolean) =>
         </div>
 
         <div className="text-center text-xs leading-relaxed text-muted lg:col-start-2">
-          Credentials are submitted for server-side authentication and are not saved in browser storage. The session expires at 06:00 IST. Do not share API credentials.
+          Groww Trading API subscription and daily key approval may be required. Enter credentials only in this app's trusted HTTPS deployment; never in ChatGPT or GitHub. Secrets are not stored in browser storage. Session expires at 06:00 IST.
         </div>
       </main>
     </div>

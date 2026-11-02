@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Runtime-only single-user broker session and audit data. NEVER commit these.
+server/data/
+*.pem
+*.key
+*.p12
