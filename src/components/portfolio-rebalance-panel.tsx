@@ -21,6 +21,8 @@ import {
   Activity,
   History,
   Check,
+  Download,
+  FileSpreadsheet,
 } from 'lucide-react';
 import type { Candle, MarketType } from '../types/market';
 import { deriveCompletedDailyTrend, type CompletedDailyTrend } from '../lib/market-integrity';
@@ -41,11 +43,13 @@ import {
   planRebalanceOrders,
   reconcilePaperFills,
   createAuditSnapshot,
+  downloadAuditHistoryCSV,
   DEFAULT_CASH_FLOOR_PCT,
   DRIFT_TOLERANCE_PCT,
   REBALANCE_RULE_VERSION,
   type MarketQuoteInfo,
 } from '../lib/rebalance-engine';
+import { PortfolioScoreHistoryChart } from './portfolio-score-history-chart';
 import { usePortfolio } from '../lib/portfolio-context';
 import { useMarketQuotes } from '../lib/quotes-context';
 import { MARKETS } from '../data/universes';
@@ -283,6 +287,24 @@ export function PortfolioRebalancePanel({
     setAuditHistory((prev) => [snapshot, ...prev]);
   }
 
+  function handleExportCSV() {
+    const dataToExport =
+      auditHistory.length > 0
+        ? auditHistory
+        : [
+            createAuditSnapshot(
+              proposal.currentScore,
+              activeMarket,
+              proposal.currentNav,
+              marketHoldings.length,
+              'MANUAL_REFRESH',
+              false,
+              'Current snapshot baseline export'
+            ),
+          ];
+    downloadAuditHistoryCSV(dataToExport, activeMarket);
+  }
+
   const mktConfig = MARKETS[activeMarket];
   const marketHoldings = holdings.filter((h) => h.market === activeMarket);
 
@@ -307,8 +329,20 @@ export function PortfolioRebalancePanel({
           </div>
         </div>
 
-        {/* Market Selector for Rebalancing */}
-        <div className="flex items-center gap-2">
+        {/* Market Selector & CSV Export */}
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-bg px-2.5 text-xs font-semibold text-fg hover:bg-surface-2 transition-colors"
+            title="Export full portfolio score history and audit trail to RFC-4180 CSV"
+          >
+            <Download className="size-3.5 text-primary" />
+            Export CSV
+          </button>
+
+          <div className="hidden sm:block h-4 w-px bg-border" />
+
           <span className="text-xs text-muted">Active Scope:</span>
           <select
             value={activeMarket}
@@ -866,6 +900,9 @@ export function PortfolioRebalancePanel({
         )}
       </div>
 
+      {/* Historical Trend Line Chart */}
+      <PortfolioScoreHistoryChart history={auditHistory} market={activeMarket} />
+
       {/* Friday Close / Monday Open Revision Schedule & Audit Trigger */}
       <div className="rounded-lg border border-border bg-surface p-5">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
@@ -954,15 +991,26 @@ export function PortfolioRebalancePanel({
               <History className="size-3.5" />
               Audit Snapshot Log ({auditHistory.length} Recorded Runs)
             </span>
-            {auditHistory.length > 0 && (
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setAuditHistory([])}
-                className="text-muted hover:text-fg font-normal"
+                onClick={handleExportCSV}
+                className="inline-flex items-center gap-1.5 rounded border border-border bg-bg px-2.5 py-1 text-xs font-semibold text-fg hover:bg-surface-2 transition-colors"
+                title="Export complete portfolio score history to CSV"
               >
-                Clear History
+                <Download className="size-3 text-primary" />
+                Export CSV
               </button>
-            )}
+              {auditHistory.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setAuditHistory([])}
+                  className="text-muted hover:text-fg font-normal text-xs"
+                >
+                  Clear History
+                </button>
+              )}
+            </div>
           </div>
 
           {auditHistory.length === 0 ? (

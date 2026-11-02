@@ -808,3 +808,76 @@ export function createAuditSnapshot(
     notes: defaultNotes,
   };
 }
+
+/**
+ * Export portfolio score history and audit trail to RFC-4180 CSV
+ */
+export function exportAuditHistoryToCSV(history: AuditSnapshot[], market: MarketType): string {
+  const headers = [
+    'Snapshot_ID',
+    'Timestamp_UTC',
+    'Local_Time',
+    'Market',
+    'Trigger',
+    'NAV',
+    'Holdings_Count',
+    'Composite_Score',
+    'Allocation_Score_40Pct',
+    'Technical_Score_35Pct',
+    'Diversification_Score_25Pct',
+    'Allocation_Drift_D',
+    'HHI_Concentration',
+    'Cash_Weight_Pct',
+    'Target_Cash_Pct',
+    'Rule_Version',
+    'Is_Simulated',
+    'Notes',
+  ];
+
+  const escapeCSV = (val: any) => {
+    if (val === null || val === undefined) return '';
+    const str = String(val);
+    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const rows = history.map((snap) => [
+    escapeCSV(snap.id),
+    escapeCSV(new Date(snap.timestamp).toISOString()),
+    escapeCSV(new Date(snap.timestamp).toLocaleString()),
+    escapeCSV(snap.market),
+    escapeCSV(snap.trigger),
+    escapeCSV(snap.nav.toFixed(2)),
+    escapeCSV(snap.holdingsCount),
+    escapeCSV(snap.score.compositeScore !== null ? snap.score.compositeScore.toFixed(1) : 'N/A'),
+    escapeCSV(snap.score.allocationScore !== null ? snap.score.allocationScore.toFixed(1) : 'N/A'),
+    escapeCSV(snap.score.technicalScore !== null ? snap.score.technicalScore.toFixed(1) : 'N/A'),
+    escapeCSV(snap.score.diversificationScore !== null ? snap.score.diversificationScore.toFixed(1) : 'N/A'),
+    escapeCSV((snap.score.unroundedDriftD * 100).toFixed(2)),
+    escapeCSV(snap.score.hhi.toFixed(4)),
+    escapeCSV(snap.score.cashWeight.toFixed(1)),
+    escapeCSV(snap.score.targetCashWeight.toFixed(1)),
+    escapeCSV(snap.score.ruleVersion),
+    escapeCSV(snap.isSimulated ? 'YES' : 'NO'),
+    escapeCSV(snap.notes),
+  ]);
+
+  const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+  return csvContent;
+}
+
+export function downloadAuditHistoryCSV(history: AuditSnapshot[], market: MarketType) {
+  const csv = exportAuditHistoryToCSV(history, market);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  const dateStr = new Date().toISOString().split('T')[0];
+  link.setAttribute('download', `portfolio-audit-history-${market}-${dateStr}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}

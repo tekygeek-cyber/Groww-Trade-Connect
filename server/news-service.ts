@@ -43,6 +43,7 @@ function extractDomain(url: string): string {
 // In-memory 15-minute news cache per market & symbol set
 const newsCache = new Map<string, { data: MarketNewsResponse; timestamp: number }>();
 const NEWS_CACHE_TTL = 15 * 60 * 1000;
+let rateLimitedUntil = 0;
 
 function normalizeMarket(m: any): MarketType {
   if (m === 'crypto') return 'crypto';
@@ -91,8 +92,9 @@ async function executeNewsQuery(
   const mktConfig = MARKETS[market] || MARKETS.nifty;
 
   const apiKey = process.env.GEMINI_API_KEY;
+  const isRateLimited = Date.now() < rateLimitedUntil;
 
-  if (apiKey) {
+  if (apiKey && !isRateLimited) {
     try {
       const ai = new GoogleGenAI({
         apiKey,
@@ -210,8 +212,20 @@ Ensure every requested symbol has an entry in the "assets" list. Return ONLY val
           timestamp: Date.now(),
         };
       }
-    } catch (err) {
-      console.error('Gemini news fetch error, falling back to desk intelligence tape:', err);
+    } catch (err: any) {
+      const is429 =
+        err?.status === 429 ||
+        err?.message?.includes('429') ||
+        err?.message?.includes('RESOURCE_EXHAUSTED') ||
+        err?.error?.code === 429;
+
+      if (is429) {
+        // Backoff for 5 minutes
+        rateLimitedUntil = Date.now() + 5 * 60 * 1000;
+        console.warn('[NewsService] Gemini search quota reached (429 RESOURCE_EXHAUSTED). Falling back cleanly to desk intelligence tape.');
+      } else {
+        console.warn('[NewsService] Gemini news query notice, serving desk intelligence tape:', err?.message || err);
+      }
     }
   }
 
