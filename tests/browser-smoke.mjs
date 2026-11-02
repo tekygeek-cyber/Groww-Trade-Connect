@@ -16,7 +16,7 @@ try {
     await page.goto(base + '/?sample=true', { waitUntil: 'domcontentloaded' });
     await page.getByRole('heading', { name: 'Signal intelligence' }).waitFor();
     assert.equal(await page.locator('[role="tabpanel"]').count(), 1);
-    const first = page.getByRole('tab', {name:'Signals'});
+    const first = page.getByRole('tab', {name:'Signals', exact:true});
     assert.equal(await first.getAttribute('aria-selected'),'true');
 
     await page.getByRole('tab', {name:'Portfolio', exact:true}).click();
