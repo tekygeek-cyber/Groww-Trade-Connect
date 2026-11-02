@@ -160,12 +160,12 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
   }
 
   return (
-    <div className="min-h-screen bg-bg text-fg">
+    <div className="desk-shell min-h-screen bg-bg text-fg">
       {/* Top Bar Header following strict one-row 3-zone contract */}
-      <header className="sticky top-0 z-20 border-b border-border bg-bg/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
+      <header className="sticky top-0 z-20 border-b border-border bg-bg/90 backdrop-blur-xl shadow-[0_12px_32px_rgba(0,0,0,0.16)]">
+        <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-4 px-4 py-3 lg:px-8">
           {/* Zone 1: Wordmark & Brand Title */}
-          <div className="flex items-center gap-4">
+          <div className="flex min-w-0 max-w-full items-center gap-3 overflow-x-auto sm:gap-4">
             <Wordmark compact market={market} />
             <div className="hidden lg:block h-5 w-px bg-border" />
             {/* Market Selector */}
@@ -212,12 +212,12 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
                   ? 'border-amber-500/40 bg-amber-500/10 text-amber-400 animate-pulse'
                   : 'border-border bg-surface text-fg hover:bg-surface-2'
               }`}
-              title="Inspect live stream health, latencies, auto-failover, and market routing"
+              title="Inspect reported provider telemetry, latency and feed routing"
             >
               <Activity className={`size-3 ${failoverCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`} />
               <span className="hidden sm:inline">Liveliness:</span>
               <span className={`font-semibold ${failoverCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                {failoverCount > 0 ? `⚠️ ${failoverCount} Feed Failed-Over` : 'Live & Routed'}
+                {failoverCount > 0 ? `${failoverCount} failover alerts` : 'Feed telemetry'}
               </span>
             </button>
 
@@ -252,10 +252,31 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
       </header>
 
       {/* Main Content Area */}
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      <main className="mx-auto max-w-[1500px] px-4 py-6 lg:px-8 lg:py-8">
+        <section className="desk-overview relative mb-5 overflow-hidden rounded-2xl border border-border bg-surface p-5 sm:p-6" aria-label="Workspace overview">
+          <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+          <div className="relative flex flex-wrap items-start justify-between gap-5">
+            <div className="max-w-2xl">
+              <p className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary"><LayoutDashboard className="size-3.5" /> Trade Connect / Research workspace</p>
+              <h1 className="text-2xl font-semibold tracking-tight text-fg sm:text-3xl">{activeSection.title}</h1>
+              <p className="mt-2 text-sm leading-relaxed text-muted">{activeSection.subtitle}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="desk-state-pill"><span className={`size-1.5 rounded-full ${sample ? 'bg-amber-400' : 'bg-primary'}`} />{sample ? 'Sample workspace' : 'Authenticated research'}</span>
+              <span className="desk-state-pill"><ShieldCheck className="size-3.5" />Paper trading only</span>
+              <span className="desk-state-pill"><Radio className="size-3.5" />Quotes: {quoteStatus}</span>
+            </div>
+          </div>
+          <div className="relative mt-5 flex flex-wrap gap-x-5 gap-y-2 border-t border-border/70 pt-4 text-xs text-muted">
+            <span>Universe <strong className="ml-1 font-medium text-fg">{mktConfig.label}</strong></span>
+            <span>Currency <strong className="ml-1 font-medium text-fg">{mktConfig.currency}</strong></span>
+            <span>Trading route <strong className="ml-1 font-medium text-watch">Not enabled</strong></span>
+          </div>
+        </section>
         {sample ? (
-          <p className="note-watch mb-5 rounded-lg border bg-surface px-4 py-2.5 text-xs text-watch">
-            Sample mode active. Quotes and indicators are calculated from realistic sample tapes without API keys.
+          <p className="note-watch mb-5 flex items-start gap-2 rounded-xl border bg-surface px-4 py-3 text-xs text-watch" role="status">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            Sample mode: prices and indicators are illustrative, not live or executable.
           </p>
         ) : session?.expires_at ? (
           <p className="mb-5 rounded-lg border border-border bg-surface px-4 py-2.5 text-xs text-muted">
@@ -265,7 +286,7 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
         ) : null}
 
         {/* Tab Navigation */}
-        <div role="tablist" aria-label="Desk tabs" className="flex flex-wrap gap-1.5 border-b border-border pb-3">
+        <div role="tablist" aria-label="Desk tabs" onKeyDown={onTabKeyboard} className="desk-tabbar flex gap-2 overflow-x-auto border-b border-border pb-3">
           <TabButton id="signals" selected={tab === 'signals'} onSelect={() => setTab('signals')} label="Signals" />
           <TabButton id="news" selected={tab === 'news'} onSelect={() => setTab('news')} label="Market News" />
           <TabButton id="heatmap" selected={tab === 'heatmap'} onSelect={() => setTab('heatmap')} label="Market Heatmap" />
@@ -382,13 +403,14 @@ function TabButton({
       type="button"
       role="tab"
       id={`tab-${id}`}
+      tabIndex={selected ? 0 : -1}
       aria-selected={selected}
       aria-controls={`panel-${id}`}
       className={
-        'h-10 rounded-lg px-4 text-xs font-semibold whitespace-nowrap transition-colors ' +
+        'desk-tab h-10 shrink-0 rounded-lg px-4 text-xs font-semibold whitespace-nowrap transition-all ' +
         (selected
-          ? 'bg-primary text-primary-fg shadow-sm'
-          : 'border border-border bg-surface text-fg hover:bg-surface-2')
+          ? 'desk-tab-active bg-primary text-primary-fg shadow-sm'
+          : 'border border-border/80 bg-surface/80 text-muted hover:bg-surface-2 hover:text-fg')
       }
       onClick={onSelect}
     >
