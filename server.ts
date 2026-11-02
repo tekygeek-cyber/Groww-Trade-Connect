@@ -64,7 +64,8 @@ const unsafeMutations = new Set([
   '/api/adapter/failover/recover',
 ]);
 app.use((req, res, next) => {
-  if (req.method === 'POST' && unsafeMutations.has(req.path)) {
+  const normalizedPath = req.path.toLowerCase().replace(/\/+$/, '');
+  if (req.method === 'POST' && unsafeMutations.has(normalizedPath)) {
     res.status(503).json({
       detail: 'Privileged state changes are disabled pending per-user authorization and audited broker reconciliation.',
     });
