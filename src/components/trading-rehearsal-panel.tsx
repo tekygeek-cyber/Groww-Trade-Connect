@@ -9,7 +9,7 @@ type Gate = {decision:'PASS'|'PASS_WITH_LIMIT'|'REVIEW'|'BLOCK';allowedQuantity:
 type Result = {simulationOnly:true;brokerSubmission:false;orderAcceptedByBroker:false;
   fixture:{id:string;currency:string;buyingPower:number;equity:number;priceSource:string};
   gate:Gate;audit:{auditId:string;sequence:number;hash:string}};
-const marketType=(market: MarketType) => market==='nifty'?'NSE':market==='nasdaq'?'NASDAQ':'CRYPTO';
+const marketType=(market: MarketType): 'NSE'|'NASDAQ'|'CRYPTO'|null => market==='nifty'?'NSE':market==='nasdaq'?'NASDAQ':market==='crypto'?'CRYPTO':null;
 export function TradingRehearsalPanel({
   market,symbol,sample
 }: {market:MarketType;symbol:string;sample:boolean}) {
@@ -23,7 +23,7 @@ export function TradingRehearsalPanel({
   const [result,setResult]=useState<Result|null>(null);
   useEffect(()=>{setResult(null);setError('');},[market,symbol]);
   async function run() {
-    if(busy||sample||!symbol)return;
+    if(busy||sample||!symbol||!marketType(market))return;
     setBusy(true);setError('');setResult(null);
     try {
       setResult(await api<Result>('/api/trading/rehearsal',{
@@ -88,11 +88,12 @@ export function TradingRehearsalPanel({
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-xs text-muted">Symbol: <strong className="text-fg">{symbol||'None'}</strong> · 100,000 mock equity</span>
-        <button type="button" onClick={run} disabled={busy||sample||!symbol}
+        <button type="button" onClick={run} disabled={busy||sample||!symbol||!marketType(market)}
           className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-fg disabled:cursor-not-allowed disabled:opacity-40">
           <ClipboardCheck className="size-4" /> {busy?'Evaluating…':'Run risk rehearsal'}
         </button>
       </div>
+      {!marketType(market)&&<p className="text-xs text-watch" role="status">ETF rehearsals are disabled until instrument-specific currency and venue rules are implemented.</p>}
       {sample&&<p className="text-xs text-watch" role="status">Sign in to access server-side rehearsals. No broker credentials are necessary.</p>}
       {error&&<p role="alert" className="rounded-lg border border-red-500/25 p-3 text-sm text-red-400">{error}</p>}
       {result&&(
