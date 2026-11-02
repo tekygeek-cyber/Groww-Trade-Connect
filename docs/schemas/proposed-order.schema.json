@@ -1,0 +1,139 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://groww-connect.example.invalid/schemas/proposed-order/v1",
+  "title": "ProposedOrder — research intent only; NOT a broker instruction",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "requestId",
+    "userId",
+    "accountId",
+    "market",
+    "symbol",
+    "side",
+    "quantity",
+    "orderType",
+    "timeInForce",
+    "strategyId",
+    "proposedBy",
+    "executionMode",
+    "humanApprovalStatus"
+  ],
+  "properties": {
+    "requestId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "userId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "accountId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "market": {
+      "enum": [
+        "CRYPTO",
+        "NASDAQ",
+        "NSE"
+      ]
+    },
+    "symbol": {
+      "type": "string",
+      "pattern": "^[A-Z0-9.^-]{1,30}$"
+    },
+    "side": {
+      "enum": [
+        "BUY",
+        "SELL"
+      ]
+    },
+    "quantity": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 100000000
+    },
+    "orderType": {
+      "enum": [
+        "MARKET",
+        "LIMIT",
+        "STOP_LOSS"
+      ]
+    },
+    "limitPrice": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "stopPrice": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "timeInForce": {
+      "enum": [
+        "DAY",
+        "GTC",
+        "IOC"
+      ]
+    },
+    "strategyId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "proposedBy": {
+      "const": "AI_STRATEGY_AGENT"
+    },
+    "executionMode": {
+      "enum": [
+        "PAPER",
+        "LIVE"
+      ]
+    },
+    "humanApprovalStatus": {
+      "enum": [
+        "PENDING",
+        "APPROVED",
+        "REJECTED"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "orderType": {
+            "const": "LIMIT"
+          }
+        },
+        "required": [
+          "orderType"
+        ]
+      },
+      "then": {
+        "required": [
+          "limitPrice"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "orderType": {
+            "const": "STOP_LOSS"
+          }
+        },
+        "required": [
+          "orderType"
+        ]
+      },
+      "then": {
+        "required": [
+          "stopPrice"
+        ]
+      }
+    }
+  ]
+}
