@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://groww-connect.example.invalid/schemas/tool-definition/v1",
+  "title": "Governed harness tool policy definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "description",
+    "permission",
+    "allowedAgents",
+    "inputSchema",
+    "outputSchema",
+    "timeoutMs",
+    "rateLimit",
+    "requiresApproval",
+    "audit"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,47}$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 512
+    },
+    "permission": {
+      "enum": [
+        "READ_ONLY",
+        "PAPER_WRITE",
+        "LIVE_WRITE"
+      ]
+    },
+    "allowedAgents": {
+      "type": "array",
+      "uniqueItems": true,
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 64
+      }
+    },
+    "inputSchema": {
+      "type": "object"
+    },
+    "outputSchema": {
+      "type": "object"
+    },
+    "timeoutMs": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 120000
+    },
+    "rateLimit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "requiresApproval": {
+      "type": "boolean"
+    },
+    "audit": {
+      "type": "boolean"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "permission": {
+            "const": "LIVE_WRITE"
+          }
+        },
+        "required": [
+          "permission"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requiresApproval": {
+            "const": true
+          },
+          "audit": {
+            "const": true
+          }
+        }
+      }
+    }
+  ]
+}
