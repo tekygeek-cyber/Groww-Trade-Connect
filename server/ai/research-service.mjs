@@ -28,7 +28,7 @@ export function allowAiRequest(caller) {
   runs.set(caller,now+30_000); // no free model can be abused with unlimited anonymous calls
   return true;
 }
-export async function researchWithAi({market,symbol,focus,evidence,model}){
+export async function researchWithAi({market,symbol,focus,evidence,model=null}){
   if(process.env.AI_ENABLED==='false') throw new Error('AI disabled by administrator');
   const source=validateEvidence(evidence);
   const tools=makeResearchTools(source);
