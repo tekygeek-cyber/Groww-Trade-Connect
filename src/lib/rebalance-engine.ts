@@ -1,4 +1,5 @@
 import type { MarketType } from '../types/market';
+import { isTrustedCompletedTrend, isTrustedMark } from './market-integrity';
 import type { PortfolioHolding } from '../types/portfolio';
 import type {
   TargetAllocation,
@@ -14,7 +15,7 @@ import type {
 } from '../types/rebalance';
 import { getConstituents } from '../data/universes';
 
-export const REBALANCE_RULE_VERSION = '2.1-guardrails';
+export const REBALANCE_RULE_VERSION = '3.0-data-integrity';
 export const DEFAULT_CASH_FLOOR_PCT = 5.0; // 5% minimum cash reserve
 export const DRIFT_TOLERANCE_PCT = 0.5; // Ignore drift under 0.5%
 export const FX_USD_TO_INR = 83.5;
@@ -29,6 +30,11 @@ export interface MarketQuoteInfo {
   changePct: number;
   sma20?: number;
   sma50?: number;
+  smaSource?: 'completed_daily_candles';
+  smaAsOf?: string;
+  timestamp?: number;
+  status?: 'Live' | 'Delayed' | 'Closed' | 'Sample';
+  source?: string;
 }
 
 /**
@@ -136,18 +142,13 @@ export function calculatePortfolioScore(
         continue;
       }
 
-      // Signal state evaluation: SMA20 > SMA50 (bullish=1.0), SMA20 == SMA50 (neutral=0.5), SMA20 < SMA50 (bearish=0.0)
-      let s_i = 0.5;
-      if (typeof q.sma20 === 'number' && typeof q.sma50 === 'number') {
-        if (q.sma20 > q.sma50) s_i = 1.0;
-        else if (q.sma20 < q.sma50) s_i = 0.0;
-        else s_i = 0.5;
-      } else {
-        // Fallback to daily price trend if SMA not directly supplied
-        if (q.changePct > 0.2) s_i = 1.0;
-        else if (q.changePct < -0.2) s_i = 0.0;
-        else s_i = 0.5;
+      // Only completed, verified historical bars can contribute technical scores.
+      if (!isTrustedCompletedTrend(q, timestamp)) {
+        missingSignal = true;
+        unavailableReasons.push(`Verified 20/50-day SMA not available for ${h.ticker}`);
+        continue;
       }
+      const s_i = q.sma20! > q.sma50! ? 1.0 : q.sma20! < q.sma50! ? 0.0 : 0.5;
 
       const r_i = (positionValues[h.ticker] || 0) / riskyNav;
       techSum += r_i * s_i;
@@ -408,11 +409,9 @@ export function planRebalanceOrders(
     new Set(targets.map(t => t.ticker)).size !== targets.length ||
     Math.abs(targets.reduce((sum, t) => sum + t.targetWeightPct, targetCashPct) - 100) > 0.011;
   const missingQuote = holdings.filter(h => h.market === market).some(h =>
-    h.shares > 0 && (!quotesMap[h.ticker] || !Number.isFinite(quotesMap[h.ticker].price) ||
-      quotesMap[h.ticker].price <= 0)) ||
+    h.shares > 0 && !isTrustedMark(quotesMap[h.ticker], createdAt)) ||
     targets.filter(t => t.targetWeightPct > 0).some(t =>
-      !quotesMap[t.ticker] || !Number.isFinite(quotesMap[t.ticker].price) ||
-      quotesMap[t.ticker].price <= 0);
+      !isTrustedMark(quotesMap[t.ticker], createdAt));
   const scopedHoldings = holdings.filter(h => h.market === market);
   const invalidHoldings = scopedHoldings.some(h =>
     !Number.isFinite(h.shares) || h.shares < 0) ||
@@ -423,7 +422,7 @@ export function planRebalanceOrders(
     const reason = needsCurrencyLedger(market)
       ? 'Rebalancing is paper-disabled for non-INR markets until currency-specific cash ledgers and FX conversion are implemented.'
       : invalidTargets ? 'Target weights are invalid or do not sum to exactly 100% including cash.'
-      : missingQuote ? 'A valid price quote is missing; paper execution is blocked.'
+      : missingQuote ? 'A verified, dated market price is missing or simulated; paper execution is blocked.'
       : 'Cash or holdings contain invalid quantities.';
     const unavailableScore: ScoreBreakdown = {
       ...calculatePortfolioScore([], [], {}, 0, market, targetCashPct),
