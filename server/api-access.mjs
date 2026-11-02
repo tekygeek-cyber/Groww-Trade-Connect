@@ -2,6 +2,7 @@
 const PUBLIC_GET = new Set([
   '/api/health',
   '/api/auth/status',
+  '/api/ai/status',
   '/api/demo/profile',
   '/api/adapter/liveliness',
   '/api/adapter/heatmap',

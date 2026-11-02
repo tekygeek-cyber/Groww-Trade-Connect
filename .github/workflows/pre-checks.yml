@@ -26,6 +26,8 @@ jobs:
         run: bun run test:rebalance
       - name: Currency and quote provenance tests
         run: bun run test:market-integrity
+      - name: Local LLM harness and failure-path tests
+        run: bun run test:ai-harness
       - name: Install headless browser smoke harness
         run: |
           npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps playwright

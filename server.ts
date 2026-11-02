@@ -24,6 +24,7 @@ import { fetchHistoricalCandles, getSampleCandles } from './server/market-data';
 import { isPrivilegedMutationBlocked } from './server/security-policy.mjs';
 import { isAnonymousApiAllowed } from './server/api-access.mjs';
 import { isSameOrigin, makeClearSessionCookie, makeSessionCookie, readSessionCookie } from './server/session-policy.mjs';
+import { getAiStatus,validateAiRequest,allowAiRequest,researchWithAi } from './server/ai/research-service.mjs';
 import { fetchMarketNewsForSignals, fetchMarketNews } from './server/news-service';
 import {
   getAllBrokersStatus,
@@ -91,6 +92,39 @@ const jobs = new Map<string, ScanJob>();
 // 1. Health & Session Auth Endpoints
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, timestamp: Date.now() });
+});
+
+// AI research never has order placement tools. Authenticated users only for model inference.
+app.get('/api/ai/status', async (_req, res) => {
+  res.setHeader('Cache-Control','no-store');
+  try { res.json(await getAiStatus()); }
+  catch { res.status(503).json({enabled:false,ready:false,mode:'read_only',reason:'Invalid local model configuration'}); }
+});
+app.post('/api/ai/research', async (req,res) => {
+  const sessionId=readSessionCookie(req.headers.cookie);
+  if(!sessionId || !readSession(sessionId)) return res.status(401).json({detail:'Authenticated research session required'});
+  let args;
+  try {
+    args=validateAiRequest(req.body);
+    if(!getConstituent(args.market,args.symbol)) throw new TypeError('Unknown symbol in selected market');
+  } catch(err) {
+    return res.status(400).json({detail:err instanceof Error?err.message:'Invalid input'});
+  }
+  if(!allowAiRequest(sessionId)) return res.status(429).json({detail:'AI analysis rate limit: one run per 30 seconds'});
+  if(process.env.AI_ENABLED==='false') return res.status(503).json({detail:'AI mode disabled on this server'});
+  try {
+    const result=await fetchHistoricalCandles(args.market,args.symbol,false);
+    const today=new Date().toISOString().slice(0,10);
+    const evidence={
+      ...args,source:result.source,
+      candles:result.candles.filter(c=>c.date<today).slice(-110)
+    };
+    const output=await researchWithAi({...args,evidence});
+    res.setHeader('Cache-Control','no-store');
+    res.json(output);
+  } catch(err) {
+    res.status(422).json({detail:err instanceof Error?err.message.slice(0,220):'Verified AI research unavailable'});
+  }
 });
 
 // DataAdapter & Liveliness Monitoring Endpoints
