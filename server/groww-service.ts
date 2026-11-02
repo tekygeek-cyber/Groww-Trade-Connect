@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import type { Profile, SessionStatus, GttRow, AutoState } from '../src/types/market';
 import { getNext6AmIst as calculateSessionExpiry, requireBrokerAccessToken } from './auth-policy.mjs';
+import { generateSessionId, hashSessionId, matchesSessionId } from './session-policy.mjs';
 
 const DATA_DIR = path.resolve(process.cwd(), 'server', 'data');
 const SESSION_PATH = path.join(DATA_DIR, 'session.json');
@@ -20,6 +21,7 @@ export function getNext6AmIst(now: Date = new Date()): Date {
 
 export type StoredSession = {
   accessToken: string;
+  sessionHash: string;
   flow: 'approval' | 'totp' | string;
   createdAt: string;
   expiresAt: string;
@@ -27,30 +29,19 @@ export type StoredSession = {
 
 let memorySession: StoredSession | null = null;
 
-export function readSession(): StoredSession | null {
-  if (memorySession) {
-    if (memorySession.accessToken.startsWith('groww_token_') || new Date() >= new Date(memorySession.expiresAt)) {
-      memorySession = null;
-    } else {
-      return memorySession;
-    }
-  }
-
+function loadStoredSession(): StoredSession | null {
+  if (memorySession && new Date(memorySession.expiresAt).getTime() > Date.now()) return memorySession;
+  memorySession = null;
   ensureDataDir();
   if (!fs.existsSync(SESSION_PATH)) return null;
-
   try {
-    const raw = fs.readFileSync(SESSION_PATH, 'utf-8');
-    const data: StoredSession = JSON.parse(raw);
-    if (!data.accessToken || !data.expiresAt || data.accessToken.startsWith('groww_token_')) return null;
-
-    if (new Date() >= new Date(data.expiresAt)) {
-      try {
-        fs.unlinkSync(SESSION_PATH);
-      } catch {}
+    const data: StoredSession = JSON.parse(fs.readFileSync(SESSION_PATH, 'utf8'));
+    if (!data || typeof data.accessToken !== 'string' || !data.accessToken.trim() ||
+        data.accessToken.startsWith('groww_token_') || !/^[0-9a-f]{64}$/.test(data.sessionHash) ||
+        !Number.isFinite(Date.parse(data.expiresAt)) || Date.parse(data.expiresAt) <= Date.now()) {
+      fs.unlinkSync(SESSION_PATH); // Revoke unbound legacy sessions and expired data.
       return null;
     }
-
     memorySession = data;
     return data;
   } catch {
@@ -58,47 +49,60 @@ export function readSession(): StoredSession | null {
   }
 }
 
-export function writeSession(token: string, flow: string): StoredSession {
+/** Never return broker credentials unless this exact caller owns the session cookie. */
+export function readSession(sessionId?: string | null): StoredSession | null {
+  const stored = loadStoredSession();
+  return stored && matchesSessionId(sessionId, stored.sessionHash) ? stored : null;
+}
+
+export function writeSession(token: string, flow: string): { session: StoredSession; sessionId: string } {
+  const sessionId = generateSessionId();
+  const sessionHash = hashSessionId(sessionId);
+  if (!sessionHash || typeof token !== 'string' || !token.trim()) {
+    throw new TypeError('A genuine broker token and a session identifier are required');
+  }
   ensureDataDir();
-  const expires = getNext6AmIst();
   const session: StoredSession = {
-    accessToken: token,
+    accessToken: token.trim(),
+    sessionHash,
     flow,
     createdAt: new Date().toISOString(),
-    expiresAt: expires.toISOString(),
+    expiresAt: getNext6AmIst().toISOString(),
   };
-
+  // Fail closed on disk failures; never advertise a session that cannot be recovered.
+  fs.writeFileSync(SESSION_PATH, JSON.stringify(session), { mode: 0o600 });
   memorySession = session;
-  try {
-    fs.writeFileSync(SESSION_PATH, JSON.stringify(session, null, 2), { mode: 0o600 });
-  } catch {}
-
-  return session;
+  return { session, sessionId };
 }
 
-export function clearSession(): void {
+/** A request without the caller's session cookie must not revoke someone else's session. */
+export function clearSession(sessionId?: string | null): boolean {
+  if (!readSession(sessionId)) return false;
   memorySession = null;
-  ensureDataDir();
-  if (fs.existsSync(SESSION_PATH)) {
-    try {
-      fs.unlinkSync(SESSION_PATH);
-    } catch {}
+  try {
+    fs.unlinkSync(SESSION_PATH);
+  } catch {
+    // The memory session is revoked, but persistence cleanup needs deployment monitoring.
+    throw new Error('Could not revoke persisted session');
   }
+  return true;
 }
 
-export function getPublicSessionStatus(): SessionStatus {
-  const session = readSession();
-  if (!session) {
-    return { authenticated: false };
-  }
-  return {
-    authenticated: true,
-    expires_at: session.expiresAt,
-    flow: session.flow,
-  };
+export function getPublicSessionStatus(sessionId?: string | null): SessionStatus {
+  const session = readSession(sessionId);
+  if (!session) return { authenticated: false };
+  return { authenticated: true, expires_at: session.expiresAt, flow: session.flow };
 }
 
-export async function loginGroww(body: { apiKey?: string; apiSecret?: string; requestToken?: string }): Promise<SessionStatus> {
+export async function loginGroww(
+  body: { apiKey?: string; apiSecret?: string; requestToken?: string },
+  existingSessionId?: string | null
+): Promise<SessionStatus & { sessionId: string }> {
+  // Single-tenant only: prevent a second anonymous browser from taking over shared server state.
+  const previousSession = loadStoredSession();
+  if (previousSession && !matchesSessionId(existingSessionId, previousSession.sessionHash)) {
+    throw new Error('This single-user desk already has an active authenticated session.');
+  }
   const apiKey = typeof body?.apiKey === 'string' ? body.apiKey.trim() : '';
   const apiSecret = typeof body?.apiSecret === 'string' ? body.apiSecret.trim() : '';
   const requestToken = typeof body?.requestToken === 'string' ? body.requestToken.trim() : '';
@@ -125,11 +129,11 @@ export async function loginGroww(body: { apiKey?: string; apiSecret?: string; re
   try { data = await response.json(); }
   catch { throw new Error('Invalid Groww authentication response.'); }
   const brokerToken = requireBrokerAccessToken(response.status, data);
-  const session = writeSession(brokerToken, flow);
-  return { authenticated: true, expires_at: session.expiresAt, flow: session.flow };
+  const { session, sessionId } = writeSession(brokerToken, flow);
+  return { authenticated: true, expires_at: session.expiresAt, flow: session.flow, sessionId };
 }
 
-export function getProfile(sample: boolean = false): Profile {
+export function getProfile(sample: boolean = false, sessionId?: string | null): Profile {
   if (sample) {
     return {
       user_name: 'Demo Trader',
@@ -141,10 +145,10 @@ export function getProfile(sample: boolean = false): Profile {
     };
   }
 
-  const session = readSession();
+  const session = readSession(sessionId);
   return {
     user_name: session ? 'Groww Desk User' : null,
-    user_id: session ? 'GROWW_' + session.accessToken.slice(0, 6).toUpperCase() : null,
+    user_id: session ? 'GROWW_SESSION' : null,
     products: ['CASH', 'CNC', 'MIS'],
     exchanges: ['NSE', 'BSE'],
     ddpi_enabled: true,
