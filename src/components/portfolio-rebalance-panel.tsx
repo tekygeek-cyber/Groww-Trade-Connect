@@ -22,7 +22,8 @@ import {
   History,
   Check,
 } from 'lucide-react';
-import type { MarketType } from '../types/market';
+import type { Candle, MarketType } from '../types/market';
+import { deriveCompletedDailyTrend, type CompletedDailyTrend } from '../lib/market-integrity';
 import type { PortfolioHolding } from '../types/portfolio';
 import type {
   TargetAllocation,
@@ -67,7 +68,7 @@ export function PortfolioRebalancePanel({
   formatCurrency: (amountINR: number) => string;
 }) {
   const { holdings, cashReserve, setCashReserve, importHoldings } = usePortfolio();
-  const { getQuote, market: globalMarket } = useMarketQuotes();
+  const { getQuote, market: globalMarket, sample } = useMarketQuotes();
 
   const [activeMarket, setActiveMarket] = useState<MarketType>(initialMarket);
   const executedProposals = useRef(new Set<string>());
@@ -98,6 +99,48 @@ export function PortfolioRebalancePanel({
     } catch {}
   }, [auditHistory]);
 
+  // Technical factors are computed from provider-sourced completed daily bars,
+  // never from same-day percentage changes or simulated prices.
+  const [dailyTrends, setDailyTrends] = useState<Record<string, CompletedDailyTrend>>({});
+  const scopedSymbols = useMemo(() => {
+    const symbols = new Set<string>([
+      ...holdings.filter(h => h.market === activeMarket).map(h => h.ticker),
+      ...targets.filter(t => t.market === activeMarket).map(t => t.ticker),
+    ]);
+    return [...symbols].sort().join(',');
+  }, [holdings, targets, activeMarket]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setDailyTrends({});
+    if (sample || activeMarket !== globalMarket) return () => controller.abort();
+    const symbols = scopedSymbols.split(',').filter(Boolean).slice(0, 12);
+    if (!symbols.length) return () => controller.abort();
+
+    Promise.all(symbols.map(async ticker => {
+      try {
+        const response = await fetch(
+          `/api/candles/${activeMarket}/${encodeURIComponent(ticker)}`,
+          { cache: 'no-store', signal: controller.signal }
+        );
+        if (!response.ok) return null;
+        const body: { candles?: Candle[]; source?: string } = await response.json();
+        const trend = deriveCompletedDailyTrend(
+          body.candles || [], body.source || '', new Date(), activeMarket
+        );
+        return trend ? { ticker, trend } : null;
+      } catch {
+        return null; // Missing provider data yields N/A, never a synthesized score.
+      }
+    })).then(results => {
+      if (controller.signal.aborted) return;
+      const next: Record<string, CompletedDailyTrend> = {};
+      for (const item of results) if (item) next[item.ticker] = item.trend;
+      setDailyTrends(next);
+    });
+    return () => controller.abort();
+  }, [activeMarket, globalMarket, sample, scopedSymbols]);
+
   // Construct quote map for holdings & targets
   const quotesMap = useMemo(() => {
     const map: Record<string, MarketQuoteInfo> = {};
@@ -113,13 +156,15 @@ export function PortfolioRebalancePanel({
           price: q.price,
           change: q.change,
           changePct: q.changePct,
-          sma20: q.price * (1 + (q.changePct > 0 ? 0.015 : -0.015)),
-          sma50: q.price * (1 + (q.changePct > 0 ? -0.01 : 0.01)),
+          timestamp: q.timestamp,
+          status: q.status,
+          source: q.source,
+          ...dailyTrends[ticker],
         };
       }
     }
     return map;
-  }, [holdings, targets, getQuote]);
+  }, [holdings, targets, getQuote, dailyTrends]);
 
   // Initialize or update targets when active market or preset changes
   useEffect(() => {
@@ -594,7 +639,7 @@ export function PortfolioRebalancePanel({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-semibold text-fg">Portfolio Core Values Score (v2.0)</h3>
+              <h3 className="text-base font-semibold text-fg">Portfolio Core Values Score (v3.0)</h3>
               <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
                 Multi-Factor Matrix
               </span>
@@ -631,6 +676,11 @@ export function PortfolioRebalancePanel({
           </div>
         </div>
 
+        {proposal.currentScore.unavailableReasons.length > 0 && (
+          <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400" role="status">
+            Incomplete score: {proposal.currentScore.unavailableReasons.slice(0, 3).join('; ')}
+          </div>
+        )}
         {/* 3 Factor Breakdown Cards */}
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           {/* Factor 1: Allocation Score */}
