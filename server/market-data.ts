@@ -148,7 +148,10 @@ async function fetchStooqOrYahooCandles(symbol: string): Promise<{ candles: Cand
   try {
     const stooqSymbol = `${symbol.toLowerCase()}.us`;
     const stooqUrl = `https://stooq.com/q/d/l/?s=${stooqSymbol}&i=d`;
-    const res = await fetch(stooqUrl, { headers: { 'User-Agent': 'Mozilla/5.0 GrowwConnectDesk/1.0' } });
+    const res = await fetch(stooqUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 GrowwConnectDesk/1.0' },
+      signal: AbortSignal.timeout(2500),
+    });
 
     if (res.ok) {
       const text = await res.text();
@@ -183,7 +186,10 @@ async function fetchStooqOrYahooCandles(symbol: string): Promise<{ candles: Cand
   // Try 2: Yahoo Finance chart endpoint
   try {
     const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1y&interval=1d`;
-    const res = await fetch(yfUrl, { headers: { 'User-Agent': 'Mozilla/5.0 GrowwConnectDesk/1.0' } });
+    const res = await fetch(yfUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 GrowwConnectDesk/1.0' },
+      signal: AbortSignal.timeout(8000),
+    });
 
     if (res.ok) {
       const data: any = await res.json();

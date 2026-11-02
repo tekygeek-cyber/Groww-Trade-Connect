@@ -6,10 +6,11 @@ import { getConstituents } from '../data/universes';
 import type { MarketType } from '../types/market';
 
 type AgentStatus = {enabled:boolean;ready:boolean;model?:string|null;reason?:string|null;provider?:string;mode:string};
-type AgentEvent = {type:string;tool?:string;step?:number;failed?:boolean;durationMs?:number;status?:string};
+type AgentEvent = {type:string;agent?:string;tool?:string;step?:number;failed?:boolean;durationMs?:number;status?:string};
 type AgentRun = {
   status:string;answer:string|null;error:string|null;runId:string;model:string;
   steps:number;toolCalls:number;events:AgentEvent[];
+  agents:{name:string;status:string;runId:string;steps:number;toolCalls:number}[];
   evidence:{market:string;symbol:string;source:string;asOf:string;bars:number};
   tradingEnabled:boolean;disclaimer:string;
 };
@@ -52,12 +53,12 @@ export function AiModePanel({ market, sample }: {market: MarketType;sample:boole
         <div className="relative flex flex-wrap justify-between gap-5">
           <div className="max-w-xl">
             <p className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-primary">
-              <BrainCircuit className="size-4" /> Local agent harness
+              <BrainCircuit className="size-4" /> Local research team
             </p>
-            <h2 className="text-xl font-semibold text-fg">AI market research agent</h2>
+            <h2 className="text-xl font-semibold text-fg">AI market research team</h2>
             <p className="mt-2 text-sm leading-relaxed text-muted">
-              A free local LLM examines verified market evidence through a bounded set of
-              read-only tools. It can test historical rule ideas, but cannot place trades.
+              A local analyst gathers verified market evidence and a separate risk reviewer
+              checks the findings. Only the analyst has bounded read-only tools; neither can place trades.
             </p>
           </div>
           <div className="flex flex-col items-start gap-2">
@@ -65,13 +66,13 @@ export function AiModePanel({ market, sample }: {market: MarketType;sample:boole
               <span className={'size-2 rounded-full '+(state?.ready?'bg-emerald-400':'bg-amber-400')} />
               {checking?'Checking model…':state?.ready?'Local LLM ready':'LLM offline'}
             </span>
-            <span className="flex items-center gap-1.5 text-xs text-muted"><Cpu className="size-3.5" /> {state?.model||'qwen3:4b'} / Ollama</span>
+            <span className="flex items-center gap-1.5 text-xs text-muted"><Cpu className="size-3.5" /> {state?.model||'qwen3:4b'} / Ollama · 2 agents</span>
             <button onClick={refreshStatus} type="button" className="text-xs font-medium text-primary hover:underline">Recheck model</button>
           </div>
         </div>
         <div className="relative mt-5 grid gap-3 border-t border-border pt-4 sm:grid-cols-3">
           <p className="flex items-center gap-2 text-xs text-muted"><ShieldCheck className="size-4 text-emerald-400" /> No live order permissions</p>
-          <p className="flex items-center gap-2 text-xs text-muted"><Clock3 className="size-4 text-primary" /> 45s agent deadline</p>
+          <p className="flex items-center gap-2 text-xs text-muted"><Clock3 className="size-4 text-primary" /> 2 sequential reviews</p>
           <p className="flex items-center gap-2 text-xs text-muted"><ClipboardCheck className="size-4 text-primary" /> Deterministic risk checks</p>
         </div>
       </div>
@@ -126,13 +127,21 @@ export function AiModePanel({ market, sample }: {market: MarketType;sample:boole
             <span>As of: {result.evidence.asOf}</span>
             <span>Model steps: {result.steps} · Tool calls: {result.toolCalls}</span>
           </div>
+          <ol className="grid gap-2 sm:grid-cols-2" aria-label="Agent team runs">
+            {result.agents.map((agent)=>(
+              <li key={agent.runId} className="rounded-lg border border-border bg-bg px-3 py-2 text-xs">
+                <span className="font-semibold text-fg">{agent.name}</span>
+                <span className="ml-2 text-muted">{agent.status.replace(/_/g,' ')}</span>
+              </li>
+            ))}
+          </ol>
           {result.answer?<p className="whitespace-pre-wrap rounded-xl border border-border bg-bg p-4 text-sm leading-relaxed text-fg">{result.answer}</p>:
             <p className="text-sm text-watch">{result.error||'Agent did not complete an evidence-based assessment. No signal.'}</p>}
           <details className="rounded-xl border border-border bg-bg p-3">
             <summary className="cursor-pointer text-xs font-semibold text-muted">Harness execution audit · {result.events.length} events</summary>
             <ol className="mt-3 space-y-2 text-xs text-muted">
               {result.events.filter(e=>['tool_end','model_error','run_end'].includes(e.type)).map((event,i)=>
-                <li key={i}>{event.type} {event.tool||''} {event.failed?'(failed)':''} {event.durationMs!==undefined?event.durationMs+' ms':''}</li>
+                <li key={i}>{event.agent||'Agent'} · {event.type} {event.tool||''} {event.failed?'(failed)':''} {event.durationMs!==undefined?event.durationMs+' ms':''}</li>
               )}
             </ol>
           </details>

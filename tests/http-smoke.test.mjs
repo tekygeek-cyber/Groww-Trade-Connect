@@ -34,6 +34,28 @@ test('sample historical candles are explicit and live Nifty fallback fails close
   assert.equal(live.status,500);
 });
 
+test('NASDAQ sample scan completes across its configured universe',async()=>{
+  const universe=await (await fetch(base+'/api/universe/nasdaq')).json();
+  const start=await fetch(base+'/api/demo/scan',{
+    method:'POST',headers:{Origin:base,'Content-Type':'application/json'},
+    body:JSON.stringify({market:'nasdaq',sample:true})
+  });
+  assert.equal(start.status,200);
+  const {id}=await start.json();
+  let job;
+  for(let i=0;i<50;i++){
+    await new Promise(resolve=>setTimeout(resolve,100));
+    const response=await fetch(`${base}/api/signals/jobs/${id}`);
+    assert.equal(response.status,200);
+    job=await response.json();
+    if(job.status!=='running') break;
+  }
+  assert.equal(job.status,'done');
+  assert.equal(job.meta.market,'nasdaq');
+  assert.equal(job.meta.matched,universe.count);
+  assert.deepEqual(job.meta.failed,[]);
+});
+
 test('AI status reveals only provider readiness, not private data', async()=>{
   const res=await fetch(base+'/api/ai/status');
   assert.equal(res.status,200);

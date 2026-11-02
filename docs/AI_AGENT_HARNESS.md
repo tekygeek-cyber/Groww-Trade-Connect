@@ -3,6 +3,8 @@
 This feature follows the **agent harness** architecture described in
 [freeCodeCamp: How to Build an AI Agent Harness from Scratch in TypeScript](https://www.freecodecamp.org/news/how-to-build-an-ai-agent-harness-from-scratch-in-typescript/).
 The model **requests** tools, but the server controls validation, execution, budgets, and trace events.
+It uses a small, locally hosted agent team adapted from the finance-team pattern in
+`ai_finance_agent_team`; it does not import that example's Agno, OpenAI, web-search, or YFinance dependencies.
 
 ## Quick start (free local inference)
 1. Install [Ollama](https://ollama.com/download) **on the machine hosting the Node app**.
@@ -16,14 +18,23 @@ The Ollama HTTP endpoint is **server-side and loopback-only**; arbitrary externa
 
 ## Application modes
 - **Normal Algo**: Existing deterministic breakout scanner and simulated paper orders.
-- **AI Agent**: Local Qwen3 analysis using only read-only evidence, historical SMA backtest, hypothetical risk checks and permission disclosure.
+- **AI Agent team**: A Market Research Analyst gathers evidence with the existing read-only tools. An Independent Risk Reviewer, which has no tools, reviews the verified results and produces the final report.
 - Both modes operate under the existing platform restrictions. **The AI has no order placement tools** and never invokes broker APIs, a shell, a repository writer, or account secrets.
+
+## Agent routing
+`server/ai/agents.mjs` defines the specialist prompts. `research-service.mjs` routes each request sequentially:
+1. **Market Research Analyst** receives the four bounded, read-only tools and must complete every evidence and risk check.
+2. The server verifies all required tool results. Missing or failed results stop the route and suppress the model answer.
+3. **Independent Risk Reviewer** receives only the verified tool outputs and user focus. It has no tools and cannot execute actions.
+4. The UI shows each agent's status and the combined, non-sensitive harness event trace.
+
+Both stages use the configured local Ollama model. This is role-separated orchestration, not independent models or a trust-score registry; agent names do not imply model accuracy.
 
 ## Harness controls
 | Boundary | Enforced |
 | --- | --- |
 | Tool calls | Named allowlist; strict argument validators; unknown/invalid calls cannot execute |
-| Agent budgets | Up to 4 model steps, 8 tool calls, 45-second deadline |
+| Agent budgets | Analyst: up to 4 model steps and 8 tool calls; reviewer: 1 step and no tools; up to 90 seconds total |
 | Context | 12,000-character provider-facing transcript window; bounded tool responses |
 | Tracing | Ordered run ID and non-sensitive model/tool timing events |
 | Model | Provider-independent harness, Ollama adapter |
@@ -32,7 +43,7 @@ The Ollama HTTP endpoint is **server-side and loopback-only**; arbitrary externa
 | Authentication | AI inference endpoint requires authenticated cookie and same-origin POST |
 | Rate limiting | 1 AI request per authenticated session per 30 seconds |
 | Data | Provider-sourced, bounded and dated daily close candles only; stale/synthetic Nifty is blocked |
-| Evidence gate | All four required tools must succeed before the model answer is displayed |
+| Evidence gate | All four required tools must succeed before the reviewer runs or any answer is displayed |
 | Actions | **Read-only**. No live or paper trade authorization, ever, from this feature |
 
 ## Testing

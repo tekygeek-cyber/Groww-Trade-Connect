@@ -424,43 +424,45 @@ app.post(['/api/signals/scan', '/api/demo/scan'], async (req, res) => {
       const failed: string[] = [];
       let matched = 0;
 
-      for (let i = 0; i < constituents.length; i++) {
-        const item = constituents[i];
-        try {
-          const { candles, source } = await fetchHistoricalCandles(market, item.ticker, sample);
-          matched++;
+      const SCAN_CONCURRENCY = 8;
+      for (let i = 0; i < constituents.length; i += SCAN_CONCURRENCY) {
+        const chunk = constituents.slice(i, i + SCAN_CONCURRENCY);
+        await Promise.all(chunk.map(async (item) => {
+          try {
+            const { candles } = await fetchHistoricalCandles(market, item.ticker, sample);
+            matched++;
 
-          const cross = latestCrossover(
-            candles,
-            params.short_window,
-            params.long_window,
-            params.lookback_days,
-          );
+            const cross = latestCrossover(
+              candles,
+              params.short_window,
+              params.long_window,
+              params.lookback_days,
+            );
 
-          if (cross) {
-            candidates.push({
-              rank: 0,
-              ticker: item.ticker,
-              company: item.name,
-              nse_token: item.exchangeToken,
-              crossover_type: cross.crossover_type,
-              crossover_date: cross.crossover_date,
-              close: cross.close,
-              sma_short: cross.sma_short,
-              sma_long: cross.sma_long,
-              bars_since: cross.bars_since,
-              asset_tag: item.assetTag,
-              currency: item.currency,
-              volume_sparse: candles.slice(-20).reduce((sum, c) => sum + (c.volume || 0), 0) < 5000,
-            });
+            if (cross) {
+              candidates.push({
+                rank: 0,
+                ticker: item.ticker,
+                company: item.name,
+                nse_token: item.exchangeToken,
+                crossover_type: cross.crossover_type,
+                crossover_date: cross.crossover_date,
+                close: cross.close,
+                sma_short: cross.sma_short,
+                sma_long: cross.sma_long,
+                bars_since: cross.bars_since,
+                asset_tag: item.assetTag,
+                currency: item.currency,
+                volume_sparse: candles.slice(-20).reduce((sum, c) => sum + (c.volume || 0), 0) < 5000,
+              });
+            }
+          } catch {
+            failed.push(item.ticker);
+          } finally {
+            newJob.done++;
+            newJob.message = `Scanned ${newJob.done}/${constituents.length} symbols`;
           }
-        } catch {
-          failed.push(item.ticker);
-        }
-
-        // Update job progress
-        newJob.done = i + 1;
-        newJob.message = `Scanned ${item.ticker} (${i + 1}/${constituents.length})`;
+        }));
       }
 
       const ranked = rankRows(candidates, params.max_stocks);

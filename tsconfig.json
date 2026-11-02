@@ -25,5 +25,5 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "exclude": ["dist"]
+  "exclude": ["dist", "awesome-llm-apps"]
 }

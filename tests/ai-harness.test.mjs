@@ -91,10 +91,23 @@ test('research suppresses unsupported final model answer',async()=>{
 test('research passes only after all four mandatory tools',async()=>{
  const names=['read_market_evidence','backtest_sma_rule','check_hypothetical_risk','execution_capabilities'];
  const args=[{},{lookback:60},{action:'HOLD',allocationPct:0,stopLossPct:0},{}];
+ const toolSets=[],prompts=[];
+ const model={provider:'test',model:'scripted',generate:async({tools,messages})=>{
+  toolSets.push(tools.map(tool=>tool.name));
+  prompts.push(messages[0]?.content);
+  if(toolSets.length===1) return {content:'',toolCalls:names.map((n,i)=>call('c'+i,n,args[i]))};
+  if(toolSets.length===2) return {content:'Evidence gathered for independent review'};
+  return {content:'NO SIGNAL pending independent review'};
+ }};
  const r=await researchWithAi({...evidence(),focus:'',evidence:evidence(),
-  model:fake([{content:'',toolCalls:names.map((n,i)=>call('c'+i,n,args[i]))},{content:'NO SIGNAL pending review'}])});
+  model});
  assert.equal(r.status,'completed');assert.equal(r.toolCalls,4);
- assert.equal(r.answer,'NO SIGNAL pending review');
+ assert.equal(r.answer,'NO SIGNAL pending independent review');
+ assert.deepEqual(toolSets,[names,names,[]]);
+ assert.ok(prompts[2].length<=1800);
+ assert.match(prompts[2],/"liveOrderPlacement":false/);
+ assert.deepEqual(r.agents.map(item=>item.name),['Market Research Analyst','Independent Risk Reviewer']);
+ assert.ok(r.events.some(event=>event.agent==='Independent Risk Reviewer'));
 });
 test('request validation rejects unknown markets, tools and prompts',()=>{
  assert.deepEqual(validateAiRequest({market:'nasdaq',symbol:'AAPL'}),{market:'nasdaq',symbol:'AAPL',focus:''});
