@@ -239,15 +239,16 @@ app.get('/api/quotes/:market', async (req, res) => {
           change: Math.round(change * 100) / 100,
           changePct: Math.round(changePct * 100) / 100,
           previousClose: prev.close,
-          timestamp: Date.now(),
-          status: sample ? 'Sample' : 'Live',
+          // Historical daily close is delayed, not a live tick.
+          timestamp: sample ? Date.now() : Date.parse(last.date + 'T00:00:00.000Z'),
+          status: sample ? 'Sample' : 'Delayed',
           source,
         };
       }
     } catch {}
   }
 
-  res.json({ market, quotes, status: sample ? 'Sample' : 'Live' });
+  res.json({ market, quotes, status: sample ? 'Sample' : 'Delayed' });
 });
 
 // News & Search Grounded Catalysts for Signals
