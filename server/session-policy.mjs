@@ -78,6 +78,10 @@ export function getConfiguredPublicOrigin(env = process.env) {
  * scheme exactly, as before. For reverse proxies, a configured public Origin
  * replaces Host as the sole trusted comparison. An untrusted forwarded Host
  * cannot grant access.
+ * @param {string | undefined} origin
+ * @param {string | undefined} host
+ * @param {boolean} secure
+ * @param {string | null | undefined} [publicOrigin]
  */
 export function isSameOrigin(origin, host, secure, publicOrigin = null) {
   const url = parseOrigin(origin);
