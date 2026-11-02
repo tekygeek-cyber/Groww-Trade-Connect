@@ -32,7 +32,8 @@ export function deriveCompletedDailyTrend(
     if (!c || typeof c.date !== 'string' ||
         !/^\d{4}-\d{2}-\d{2}$/.test(c.date) || c.date >= today ||
         !Number.isFinite(c.close) || c.close <= 0 ||
-        new Date(c.date + 'T00:00:00.000Z').toISOString().slice(0, 10) !== c.date ||
+        (!Number.isFinite(Date.parse(c.date + 'T00:00:00.000Z')) ||
+          new Date(Date.parse(c.date + 'T00:00:00.000Z')).toISOString().slice(0, 10) !== c.date) ||
         byDate.has(c.date)) return null;
     byDate.set(c.date, c.close);
   }
