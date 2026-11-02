@@ -63,3 +63,16 @@ test('unauthenticated rehearsal and audit remain private',async()=>{
   });
   assert.equal(res.status,401);
 });
+
+test('Kraken prelogin diagnostic rejects unsafe input and cross-origin callers', async()=>{
+  const bad=await fetch(base+'/api/kraken/check-readonly',{
+    method:'POST',headers:{Origin:base,'Content-Type':'application/json'},
+    body:'{}'
+  });
+  assert.equal(bad.status,400);
+  const cross=await fetch(base+'/api/kraken/check-readonly',{
+    method:'POST',headers:{Origin:'https://example-evil.test','Content-Type':'application/json'},
+    body:'{}'
+  });
+  assert.equal(cross.status,403);
+});
