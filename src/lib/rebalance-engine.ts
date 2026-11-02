@@ -19,6 +19,10 @@ export const DEFAULT_CASH_FLOOR_PCT = 5.0; // 5% minimum cash reserve
 export const DRIFT_TOLERANCE_PCT = 0.5; // Ignore drift under 0.5%
 export const FX_USD_TO_INR = 83.5;
 
+function needsCurrencyLedger(market: MarketType): boolean {
+  return market !== 'nifty';
+}
+
 export interface MarketQuoteInfo {
   price: number;
   change: number;
@@ -413,8 +417,8 @@ export function planRebalanceOrders(
     !Number.isFinite(h.shares) || h.shares < 0) ||
     !Number.isFinite(cashBalance) || cashBalance < 0;
 
-  if (market !== 'nifty' || invalidTargets || missingQuote || invalidHoldings) {
-    const reason = market !== 'nifty'
+  if (needsCurrencyLedger(market) || invalidTargets || missingQuote || invalidHoldings) {
+    const reason = needsCurrencyLedger(market)
       ? 'Rebalancing is paper-disabled for non-INR markets until currency-specific cash ledgers and FX conversion are implemented.'
       : invalidTargets ? 'Target weights are invalid or do not sum to exactly 100% including cash.'
       : missingQuote ? 'A valid price quote is missing; paper execution is blocked.'
