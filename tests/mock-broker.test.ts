@@ -59,3 +59,31 @@ test('simulated broker is self-contained; no HTTP requests are issued',()=>{
  try {const adapter=new MockBrokerContract();assert.equal(adapter.submit(order(),approval()).state,'FILLED');}
  finally {globalThis.fetch=original;}
 });
+
+
+test('replaying a request ID with modified economic terms is an idempotency conflict',()=>{
+ const adapter=new MockBrokerContract(()=> '2026-11-02T12:00:00Z');
+ const original=order();
+ const first=adapter.submit(original,approval(),'FILL');
+ const changes=[
+  {...original,quantity:8},
+  {...original,limitPrice:20},
+  {...original,symbol:'MSFT'},
+  {...original,side:'SELL' as const},
+  {...original,accountId:'other-account'},
+  {...original,market:'NSE' as const},
+ ];
+ for (const changed of changes) {
+  assert.throws(()=>adapter.submit(changed,approval(changed.quantity)),/MOCK_IDEMPOTENCY_CONFLICT/);
+  assert.equal(adapter.status(original.requestId)?.brokerOrderId,first.brokerOrderId);
+  assert.equal(adapter.status(original.requestId)?.filledQuantity,4);
+ }
+});
+test('same order replay preserves the original ACK without duplicating fills',()=>{
+ const adapter=new MockBrokerContract(),o=order();
+ const ack=adapter.submit(o,approval(),'PARTIAL');
+ const result=adapter.submit({...o},approval(),'FILL');
+ assert.deepEqual(result,ack);
+ assert.equal(result.events.filter(x=>x.type==='MOCK_PARTIAL_FILL').length,1);
+ assert.equal(result.state,'PARTIALLY_FILLED');
+});
