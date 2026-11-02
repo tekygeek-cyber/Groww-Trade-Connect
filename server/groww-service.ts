@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import type { Profile, SessionStatus, GttRow, AutoState } from '../src/types/market';
-import { getNext6AmIst as calculateSessionExpiry, requireBrokerAccessToken } from './auth-policy.mjs';
+import { getNext6AmIst as calculateSessionExpiry } from './auth-policy.mjs';
+import { makeGrowwApprovalPayload, makeGrowwTotpPayload, extractGrowwAccessToken, GROWW_TOKEN_URL } from './groww-auth-flow.mjs';
 import { generateSessionId, hashSessionId, matchesSessionId } from './session-policy.mjs';
 
 const DATA_DIR = path.resolve(process.cwd(), 'server', 'data');
@@ -110,14 +111,22 @@ export async function loginGroww(
     throw new Error('Groww API key and API secret or request token are required.');
   }
   const flow = requestToken ? 'totp' : 'approval';
-  const payload: Record<string, string> = { api_key: apiKey };
-  if (apiSecret) payload.api_secret = apiSecret;
-  if (requestToken) payload.request_token = requestToken;
+  // Groww requires a subscription and either daily approved API-secret checksum
+  // or a six-digit TOTP; no credentials are persisted or sent to an LLM.
+  const payload = requestToken
+    ? makeGrowwTotpPayload(requestToken)
+    : makeGrowwApprovalPayload(apiSecret);
   let response: Response;
   try {
-    response = await fetch('https://api.groww.in/v1/api/token', {
+    response = await fetch(GROWW_TOKEN_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'GrowwConnectDesk/1.0' },
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-API-VERSION': '1.0',
+        'User-Agent': 'GrowwConnectDesk/1.0',
+      },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(10_000),
     });
@@ -128,7 +137,8 @@ export async function loginGroww(
   let data: unknown;
   try { data = await response.json(); }
   catch { throw new Error('Invalid Groww authentication response.'); }
-  const brokerToken = requireBrokerAccessToken(response.status, data);
+  const brokerToken = extractGrowwAccessToken(response.status, data);
+
   const { session, sessionId } = writeSession(brokerToken, flow);
   return { authenticated: true, expires_at: session.expiresAt, flow: session.flow, sessionId };
 }
