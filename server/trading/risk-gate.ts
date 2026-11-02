@@ -134,6 +134,8 @@ export function validateRiskAndCompliance(
   evaluatedAt: Date = new Date()
 ): GateResult {
   const reasonCodes: string[] = [];
+  const safeEvaluationMs=evaluatedAt instanceof Date?evaluatedAt.getTime():Number.NaN;
+  const evaluationTime=Number.isFinite(safeEvaluationMs)?evaluatedAt.toISOString():'INVALID';
   const checks: Record<string, CheckStatus> = {
     schema:'SKIPPED', identity:'SKIPPED',market:'SKIPPED',order:'SKIPPED',
     financial:'SKIPPED',compliance:'SKIPPED',execution:'SKIPPED'
@@ -142,9 +144,9 @@ export function validateRiskAndCompliance(
     decision,allowedQuantity:quantity,reasonCodes:[...reasonCodes],
     auditId:randomUUID(),checks:{...checks},
     message:reasonCodes.length?reasonCodes.join(', '):decision==='PASS'?'Paper rehearsal passed deterministic checks':'Human review required',
-    ruleEngineVersion:RULE_ENGINE_VERSION,notional,evaluatedAt:evaluatedAt.toISOString()
+    ruleEngineVersion:RULE_ENGINE_VERSION,notional,evaluatedAt:evaluationTime
   });
-  if (!Number.isFinite(evaluatedAt.getTime())) {
+  if (!Number.isFinite(safeEvaluationMs)) {
     push(reasonCodes,'INVALID_EVALUATION_TIME'); checks.schema='FAIL'; return result('BLOCK');
   }
   const schemaErrors=validateProposedOrderShape(rawOrder);
@@ -156,14 +158,18 @@ export function validateRiskAndCompliance(
     push(reasonCodes,'ACCOUNT_SNAPSHOT_INVALID');checks.identity='FAIL';return result('BLOCK');
   }
   const o=rawOrder as ProposedOrder, a=rawAccount;
+  // Capture the initial error count separately for each gate; an earlier FAIL
+  // must never mislabel an independently passing layer as failed.
+  let layerStart=reasonCodes.length;
   if (!a.authenticated || a.userId!==o.userId || a.accountId!==o.accountId ||
       !a.permittedMarkets.includes(o.market)) push(reasonCodes,'ACCOUNT_UNAUTHORIZED');
   if (a.duplicateRequestIds.includes(o.requestId)) push(reasonCodes,'DUPLICATE_REQUEST');
-  checks.identity=reasonCodes.length?'FAIL':'PASS';
+  checks.identity=reasonCodes.length>layerStart?'FAIL':'PASS';
   if (!validInstrument(rawInstrument)) {
     push(reasonCodes,'INSTRUMENT_SNAPSHOT_INVALID');checks.market='FAIL';return result('BLOCK');
   }
   const i=rawInstrument;
+  layerStart=reasonCodes.length;
   if (i.market!==o.market || i.symbol!==o.symbol || i.currency!==CURRENCY[o.market] || a.currency!==i.currency)
     push(reasonCodes,'MARKET_CURRENCY_MISMATCH');
   if (!i.providerVerified) push(reasonCodes,'DATA_UNVERIFIED');
@@ -172,17 +178,19 @@ export function validateRiskAndCompliance(
   if (!i.tradable || !i.marketOpen) push(reasonCodes,'MARKET_CLOSED');
   if (i.halted) push(reasonCodes,'HALTED');
   if (i.restricted || i.corporateActionBlocked) push(reasonCodes,'INSTRUMENT_RESTRICTED');
-  checks.market=reasonCodes.length?'FAIL':'PASS';
+  checks.market=reasonCodes.length>layerStart?'FAIL':'PASS';
+  layerStart=reasonCodes.length;
   if (!nearMultiple(o.quantity,i.lotSize) || o.quantity<i.minQuantity) push(reasonCodes,'INVALID_LOT_OR_QUANTITY');
   const price=o.orderType==='LIMIT'?o.limitPrice!:o.orderType==='STOP_LOSS'?o.stopPrice!:i.lastPrice;
   if (!pos(price) || !nearMultiple(price,i.tickSize)) push(reasonCodes,'INVALID_TICK_SIZE');
   if (i.lowerPriceBand!==undefined && price<i.lowerPriceBand ||
       i.upperPriceBand!==undefined && price>i.upperPriceBand) push(reasonCodes,'OUTSIDE_PRICE_BAND');
-  checks.order=reasonCodes.length?'FAIL':'PASS';
+  checks.order=reasonCodes.length>layerStart?'FAIL':'PASS';
   if (!validLimits(rawLimits)) {
     push(reasonCodes,'RISK_LIMITS_INVALID');checks.financial='FAIL';return result('BLOCK');
   }
   const l=rawLimits;
+  layerStart=reasonCodes.length;
   const notional=price*o.quantity;
   if (!Number.isFinite(notional) || notional<=0) push(reasonCodes,'INVALID_NOTIONAL');
   if (a.equity<=0) push(reasonCodes,'ACCOUNT_EQUITY_INVALID');
@@ -202,17 +210,19 @@ export function validateRiskAndCompliance(
   if (a.ordersLastSecond>=l.maxOrdersPerSecond) push(reasonCodes,'ORDER_RATE_LIMIT');
   if (a.leverage>l.maxLeverage || pct(a.totalExposure+(o.side==='BUY'?notional:0))>l.maxLeverage*100)
     push(reasonCodes,'LEVERAGE_LIMIT');
-  checks.financial=reasonCodes.length?'FAIL':'PASS';
+  checks.financial=reasonCodes.length>layerStart?'FAIL':'PASS';
+  layerStart=reasonCodes.length;
   if (a.selfTradeRisk) push(reasonCodes,'SELF_TRADE_RISK');
   if (a.strategyKilled||a.accountKilled||a.platformKilled) push(reasonCodes,'KILL_SWITCH_ACTIVE');
-  checks.compliance=reasonCodes.length?'FAIL':'PASS';
+  checks.compliance=reasonCodes.length>layerStart?'FAIL':'PASS';
+  layerStart=reasonCodes.length;
   if (o.humanApprovalStatus==='REJECTED') push(reasonCodes,'APPROVAL_REJECTED');
   if (o.executionMode==='LIVE') {
     if (!a.stepUpVerified) push(reasonCodes,'STEP_UP_REQUIRED');
     // Even a string APPROVED is untrusted; no bound approval service exists.
     push(reasonCodes,'LIVE_BROKER_DISABLED');
   }
-  checks.execution=reasonCodes.length?'FAIL':'PASS';
+  checks.execution=reasonCodes.length>layerStart?'FAIL':'PASS';
   return reasonCodes.length?result('BLOCK',0,Number.isFinite(notional)?notional:null)
     :result('PASS',o.quantity,notional);
 }

@@ -153,3 +153,58 @@ test('rehearsal records SHA-256 hash-chain and returns LIVE always blocked',()=>
   assert.throws(()=>readRehearsalAudits(10),/integrity|chain/);
  } finally {process.chdir(oldCwd);fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('each gate reports its own outcome even when earlier layers block',()=>{
+  const f=make();
+  const denied=gate({...f,account:{...f.account,authenticated:false}});
+  assert.equal(denied.decision,'BLOCK');
+  assert.equal(denied.checks.schema,'PASS');
+  assert.equal(denied.checks.identity,'FAIL');
+  assert.equal(denied.checks.market,'PASS');
+  assert.equal(denied.checks.order,'PASS');
+  assert.equal(denied.checks.financial,'PASS');
+  assert.equal(denied.checks.compliance,'PASS');
+  assert.equal(denied.checks.execution,'PASS');
+
+  const halted=gate({...f,instrument:{...f.instrument,halted:true}});
+  assert.equal(halted.checks.identity,'PASS');
+  assert.equal(halted.checks.market,'FAIL');
+  assert.equal(halted.checks.order,'PASS');
+  assert.equal(halted.checks.financial,'PASS');
+  assert.equal(halted.checks.compliance,'PASS');
+
+  const outOfCash=gate({...f,account:{...f.account,availableCash:1}});
+  assert.equal(outOfCash.checks.financial,'FAIL');
+  assert.equal(outOfCash.checks.compliance,'PASS');
+  assert.equal(outOfCash.checks.execution,'PASS');
+
+  const killed=gate({...f,account:{...f.account,platformKilled:true}});
+  assert.equal(killed.checks.financial,'PASS');
+  assert.equal(killed.checks.compliance,'FAIL');
+  assert.equal(killed.checks.execution,'PASS');
+});
+test('multiple failures appear in only their matching layers',()=>{
+  const f=make();
+  const r=gate({...f,
+    account:{...f.account,authenticated:false,availableCash:0,platformKilled:true},
+    instrument:{...f.instrument,halted:true},
+  });
+  assert.equal(r.decision,'BLOCK');
+  assert.deepEqual(
+    [r.checks.identity,r.checks.market,r.checks.order,r.checks.financial,r.checks.compliance,r.checks.execution],
+    ['FAIL','FAIL','PASS','FAIL','FAIL','PASS']
+  );
+  assert.ok(r.reasonCodes.includes('ACCOUNT_UNAUTHORIZED'));
+  assert.ok(r.reasonCodes.includes('HALTED'));
+  assert.ok(r.reasonCodes.includes('INSUFFICIENT_CASH'));
+  assert.ok(r.reasonCodes.includes('KILL_SWITCH_ACTIVE'));
+});
+test('invalid evaluation Date is a blocked audit result rather than an uncaught exception',()=>{
+  const f=make();
+  const r=validateRiskAndCompliance(f.order,f.instrument,f.account,f.limits,new Date('broken'));
+  assert.equal(r.decision,'BLOCK');
+  assert.equal(r.checks.schema,'FAIL');
+  assert.ok(r.reasonCodes.includes('INVALID_EVALUATION_TIME'));
+  assert.equal(r.evaluatedAt,'INVALID');
+});
