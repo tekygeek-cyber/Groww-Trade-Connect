@@ -35,6 +35,7 @@ import { MARKETS } from '../data/universes';
 // Split high-cost workspaces into on-demand chunks.
 const StrategiesPanel = lazy(() => import('./strategies-panel').then(m => ({ default: m.StrategiesPanel })));
 const AlgoSignalsPanel = lazy(() => import('./algo-signals').then(m => ({ default: m.AlgoSignalsPanel })));
+const AiModePanel = lazy(() => import('./ai-mode-panel').then(m => ({ default: m.AiModePanel })));
 const GttPanel = lazy(() => import('./gtt-panel').then(m => ({ default: m.GttPanel })));
 const AlertsPanel = lazy(() => import('./alerts-panel').then(m => ({ default: m.AlertsPanel })));
 const PortfolioPanel = lazy(() => import('./portfolio-panel').then(m => ({ default: m.PortfolioPanel })));
@@ -80,6 +81,7 @@ const PRODUCT_LABEL: Record<string, string> = {
 export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => void }) {
   const { market, quoteStatus, dataSourceLabel, sessionClock } = useMarketQuotes();
   const [tab, setTab] = useState<DeskTab>('signals');
+  const [algoMode, setAlgoMode] = useState<'normal'|'ai'>('normal');
   const [session, setSession] = useState<SessionStatus | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -89,7 +91,9 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
   const [failoverCount, setFailoverCount] = useState(0);
 
   const mktConfig = MARKETS[market];
-  const activeSection = TAB_DETAILS[tab];
+  const activeSection = tab === 'algo' && algoMode === 'ai'
+    ? {title:'AI research agent',subtitle:'Free local LLM · bounded tool harness · read-only trade research'}
+    : TAB_DETAILS[tab];
   function onTabKeyboard(event: KeyboardEvent<HTMLDivElement>) {
     if (!['ArrowRight','ArrowLeft','Home','End'].includes(event.key)) return;
     event.preventDefault();
@@ -343,9 +347,24 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
           </div>
         )}
         {tab === 'algo' && (
-          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-algo" aria-labelledby="tab-algo">
-            <Suspense fallback={<DeskLoading label="algo" />}>
-              <AlgoSignalsPanel />
+          <div className="desk-panel mt-6 min-w-0 space-y-5" role="tabpanel" id="panel-algo" aria-labelledby="tab-algo">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3">
+              <div role="group" aria-label="Trading mode" className="flex items-center gap-1 rounded-lg bg-bg p-1">
+                <button type="button" aria-pressed={algoMode==='normal'} onClick={()=>setAlgoMode('normal')}
+                  className={'rounded-lg px-4 py-2 text-xs font-semibold transition-colors '+(algoMode==='normal'?'bg-primary text-primary-fg':'text-muted hover:bg-surface-2 hover:text-fg')}>
+                  Normal Algo
+                </button>
+                <button type="button" aria-pressed={algoMode==='ai'} onClick={()=>setAlgoMode('ai')}
+                  className={'rounded-lg px-4 py-2 text-xs font-semibold transition-colors '+(algoMode==='ai'?'bg-primary text-primary-fg':'text-muted hover:bg-surface-2 hover:text-fg')}>
+                  AI Agent
+                </button>
+              </div>
+              <p className="text-xs text-muted">{algoMode==='normal'
+                ? 'Deterministic scanner / paper order simulations'
+                : 'Local Ollama · read-only harness · no order execution'}</p>
+            </div>
+            <Suspense fallback={<DeskLoading label={algoMode==='ai'?'AI research':'normal algo'} />}>
+              {algoMode==='normal' ? <AlgoSignalsPanel /> : <AiModePanel market={market} sample={sample} />}
             </Suspense>
           </div>
         )}
