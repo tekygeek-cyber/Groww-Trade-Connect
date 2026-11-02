@@ -107,8 +107,8 @@ export function PortfolioView() {
             </span>
           </div>
           <p className="mt-1 max-w-3xl text-sm text-muted">
-            Unified institutional portfolio tracking across Nifty 100, NASDAQ, Crypto, and liquid ETFs with real-time
-            pricing, asset allocation metrics, and opportunity mix rebalancing.
+            Portfolio holdings, model allocations and indicative valuations across Nifty, NASDAQ, crypto and ETFs.
+            Quotes may be delayed or unavailable; this is not a broker-synced account view.
           </p>
         </div>
 
@@ -182,6 +182,13 @@ export function PortfolioView() {
             Add Position
           </button>
         </div>
+      </div>
+
+      <div role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-400">
+        Indicative totals only. The portfolio summary uses a static USD/INR reference,
+        assumes USDT parity, and may use cost basis when market quotes are missing.
+        Mixed-currency ETF data is not a verified FX conversion. Do not use this
+        consolidated valuation to authorize trades.
       </div>
 
       {/* Primary KPI Metric Cards (Calculated in Selected Currency) */}
