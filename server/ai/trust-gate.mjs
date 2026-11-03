@@ -197,7 +197,8 @@ export function evaluateTrustMetrics({ evidence, toolEvidence, researchStatus, r
 
   // 4. Execution Sandbox Quarantine & Read-Only Policy (Max 20 pts)
   const execTool = (toolEvidence || []).find(t => t.tool === 'execution_capabilities');
-  const isQuarantined = execTool && execTool.result?.readOnly === true && execTool.result?.liveOrderPlacement === false;
+  const isQuarantined = execTool && execTool.result?.readOnly === true &&
+    execTool.result?.liveOrderPlacement === false && execTool.result?.paperOrderPlacement === false;
   if (isQuarantined) {
     score += 20;
     checks.push({
@@ -228,11 +229,13 @@ export function evaluateTrustMetrics({ evidence, toolEvidence, researchStatus, r
 
   // Determine Gate Decision: TRUST_APPROVED (>=70 and all required pass), TRUST_FLAGGED (50-69 or warning), TRUST_BLOCKED (<50 or missing required)
   let gateDecision = 'TRUST_BLOCKED';
-  const hasFatalFailure = missingTools.length > 0 || !isQuarantined || researchStatus !== 'completed';
+  const hasFatalFailure = missingTools.length > 0 || !isQuarantined ||
+    researchStatus !== 'completed' || reviewStatus !== 'completed';
 
   if (!hasFatalFailure && trustScore >= 70 && riskPassed) {
     gateDecision = 'TRUST_APPROVED';
-  } else if (trustScore >= 50 && !missingTools.includes('read_market_evidence')) {
+  } else if (researchStatus === 'completed' && reviewStatus === 'completed' &&
+    trustScore >= 50 && !missingTools.includes('read_market_evidence') && isQuarantined) {
     gateDecision = 'TRUST_FLAGGED';
   } else {
     gateDecision = 'TRUST_BLOCKED';
