@@ -6,6 +6,7 @@ import {
 import { ArrowRight, Eye, EyeOff, KeyRound, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { AccentSwitch } from './accent';
 import { Wordmark } from './wordmark';
+import { OwnerReadOnlyWorkspace } from './owner-readonly-workspace';
 
 type Stage = 'checking' | 'login' | 'forgot' | 'invite' | 'reset' | 'authorized' | 'setup';
 type OwnerCheck = { authenticated: boolean; authorized: boolean; mode?: string; code?: string; identityId?: string; setting?: string };
@@ -266,7 +267,7 @@ export function OwnerIdentityLogin() {
                   an approved new deploy so the Function receives the updated setting.
                 </p>
                 <code className="block select-all rounded-lg border border-border bg-bg p-3 text-xs text-fg">
-                  OWNER_IDENTITY_USER_ID
+                  OWNER_IDENTITY_SUB
                 </code>
                 <p className="text-xs text-muted">
                   Never use your email address, a Groww key, a VITE_ variable or a GitHub file.
@@ -299,6 +300,7 @@ export function OwnerIdentityLogin() {
                 still depend on the old broker session and are not connected to this identity yet.
                 The full dashboard will be enabled after the Step 3 API migration and security tests.
               </p>
+              <OwnerReadOnlyWorkspace />
               <button type="button" disabled={busy} onClick={() => void signOut()}
                 className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-border bg-surface-2 text-sm font-semibold text-fg disabled:opacity-50">
                 Sign out securely
