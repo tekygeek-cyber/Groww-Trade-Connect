@@ -1,4 +1,5 @@
 import { authorizeOwnerUser } from './owner-access-policy.mjs';
+import { getConfiguredOwnerIdentityId } from './owner-identity-config.mjs';
 
 /**
  * Pure, testable owner-session handler for a verified Netlify Identity user.
@@ -7,7 +8,7 @@ import { authorizeOwnerUser } from './owner-access-policy.mjs';
  */
 export function createIdentityOwnerSessionHandler({
   getVerifiedUser,
-  getOwnerId = () => process.env.OWNER_IDENTITY_USER_ID,
+  getOwnerId = () => getConfiguredOwnerIdentityId(process.env),
 } = {}) {
   if (typeof getVerifiedUser !== 'function' || typeof getOwnerId !== 'function') {
     throw new TypeError('Trusted Identity provider and owner configuration are required');
