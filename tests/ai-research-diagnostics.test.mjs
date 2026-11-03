@@ -24,3 +24,13 @@ test('invalid, missing, or non-positive evidence fails closed', () => {
   assert.throws(() => calculateResearchDiagnostics(candles([...Array(59).fill(100), 0])), TypeError);
   assert.throws(() => calculateResearchDiagnostics(candles([...Array(59).fill(100), NaN])), TypeError);
 });
+
+test('crypto volatility is annualized over 365 daily candles rather than 252 equity sessions', () => {
+  const series = candles(Array.from({length:60},(_,i)=>100 + i*0.75 + (i%2?3:0)));
+  const equity = calculateResearchDiagnostics(series,{market:'nasdaq'});
+  const crypto = calculateResearchDiagnostics(series,{market:'crypto'});
+  assert.equal(equity.annualizationDays,252);
+  assert.equal(crypto.annualizationDays,365);
+  assert.ok(crypto.annualizedVolatilityPct > equity.annualizedVolatilityPct);
+  assert.equal(equity.maxObservedDrawdownPct,crypto.maxObservedDrawdownPct);
+});
