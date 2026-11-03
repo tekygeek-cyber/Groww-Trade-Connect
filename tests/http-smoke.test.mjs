@@ -13,7 +13,7 @@ test('anonymous status is not authenticated', async () => {
   assert.equal((await res.json()).authenticated,false);
 });
 test('private account and broker endpoints refuse unauthenticated callers', async () => {
-  for(const path of ['/api/profile','/api/brokers/status','/api/algo-orders/list']) {
+  for(const path of ['/api/profile','/api/brokers/status','/api/algo-orders/list','/api/ai/metrics']) {
     const res=await fetch(base+path);
     assert.equal(res.status,401,path);
   }
@@ -63,6 +63,10 @@ test('AI status reveals only provider readiness, not private data', async()=>{
   assert.equal(typeof status.ready,'boolean');
   assert.equal(status.mode,'read_only');
   assert.equal(status.liveOrdersEnabled,false);
+});
+test('AI run metrics are private and unavailable without a desk session', async () => {
+  const res = await fetch(base + '/api/ai/metrics');
+  assert.equal(res.status, 401);
 });
 test('AI research requires authentication and matching Origin',async()=>{
   const anonymous=await fetch(base+'/api/ai/research',{method:'POST',
