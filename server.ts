@@ -105,9 +105,13 @@ app.get('/api/ai/status', async (_req, res) => {
   try { res.json(await getAiStatus()); }
   catch { res.status(503).json({enabled:false,ready:false,mode:'read_only',reason:'Invalid local model configuration'}); }
 });
-app.get('/api/ai/metrics', (_req, res) => {
+app.get('/api/ai/metrics', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  res.json(getAiRunMetrics());
+  const sessionId = readSessionCookie(req.headers.cookie);
+  if (!sessionId || !readSession(sessionId)) {
+    return res.status(401).json({ detail: 'Authenticated research session required' });
+  }
+  res.json(getAiRunMetrics(sessionId));
 });
 app.post('/api/ai/research', async (req,res) => {
   const sessionId=readSessionCookie(req.headers.cookie);
@@ -138,6 +142,7 @@ app.post('/api/ai/research', async (req,res) => {
     res.status(422).json({detail:err instanceof Error?err.message.slice(0,220):'Verified AI research unavailable'});
   } finally {
     recordAiRunMetric({
+      sessionId,
       timestamp: startedAt,
       latencyMs: Date.now() - startedAt,
       success,

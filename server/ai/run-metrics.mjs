@@ -60,7 +60,59 @@ export function createAiRunMetrics({ now = Date.now, capacity = MAX_RUNS, retent
   return { record, snapshot };
 }
 
-const aiRunMetrics = createAiRunMetrics();
+/**
+ * Metrics belong to the authenticated desk session that generated them.
+ * We intentionally retain only bounded, anonymous timing/success aggregates.
+ * Never return another caller's measurements or persist session IDs to disk.
+ */
+export function createSessionAiRunMetrics({
+  now = Date.now,
+  maxSessions = 150,
+  retentionMs = WINDOW_MS,
+  capacity = MAX_RUNS,
+} = {}) {
+  if (!Number.isSafeInteger(maxSessions) || maxSessions < 1) {
+    throw new RangeError('Invalid maximum AI metric sessions');
+  }
+  const sessions = new Map();
+  const empty = createAiRunMetrics({ now, retentionMs, capacity });
 
-export const recordAiRunMetric = aiRunMetrics.record;
-export const getAiRunMetrics = aiRunMetrics.snapshot;
+  const prune = () => {
+    const cutoff = now() - retentionMs;
+    for (const [id, entry] of sessions) {
+      if (entry.lastSeen < cutoff) sessions.delete(id);
+    }
+  };
+
+  function record({ sessionId, ...run }) {
+    if (typeof sessionId !== 'string' || !sessionId.trim()) return;
+    prune();
+    let entry = sessions.get(sessionId);
+    if (!entry) {
+      // Least-recently-used eviction limits the server's memory footprint.
+      if (sessions.size >= maxSessions) {
+        const oldest = [...sessions.entries()].reduce((candidate, item) =>
+          !candidate || item[1].lastSeen < candidate[1].lastSeen ? item : candidate, null);
+        if (oldest) sessions.delete(oldest[0]);
+      }
+      entry = { metrics: createAiRunMetrics({ now, retentionMs, capacity }), lastSeen: now() };
+      sessions.set(sessionId, entry);
+    }
+    entry.metrics.record(run);
+    entry.lastSeen = now();
+  }
+
+  function snapshot(sessionId) {
+    if (typeof sessionId !== 'string' || !sessionId.trim()) return empty.snapshot();
+    prune();
+    const entry = sessions.get(sessionId);
+    return entry ? entry.metrics.snapshot() : empty.snapshot();
+  }
+
+  return { record, snapshot };
+}
+
+const sessionAiRunMetrics = createSessionAiRunMetrics();
+
+export const recordAiRunMetric = sessionAiRunMetrics.record;
+export const getAiRunMetrics = sessionAiRunMetrics.snapshot;
