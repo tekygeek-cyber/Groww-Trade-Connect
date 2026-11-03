@@ -24,6 +24,15 @@ try {
     const first = page.getByRole('tab', {name:'Signals', exact:true});
     assert.equal(await first.getAttribute('aria-selected'),'true');
 
+    await page.getByRole('tab', {name:'Overview', exact:true}).click();
+    await page.getByRole('heading', {name:'Research overview'}).waitFor();
+    await page.getByRole('heading', {name:'Indicative market allocation'}).waitFor();
+    await page.getByRole('heading', {name:'Risk and data integrity'}).waitFor();
+    await page.getByText('No live order execution is available.', {exact:false}).waitFor();
+    assert.equal(await page.locator('[role="tabpanel"]').count(),1);
+    await page.getByRole('button', {name:'Portfolio details'}).click();
+    await page.getByRole('heading', {name:'Portfolio workspace'}).waitFor();
+
     await page.getByRole('tab', {name:'Portfolio', exact:true}).click();
     await page.getByRole('heading', {name:'Portfolio workspace'}).waitFor();
     await page.getByRole('heading', {name:'Multi-Market Stock Portfolio'}).waitFor();
@@ -34,10 +43,8 @@ try {
     await page.getByRole('heading',{name:'Strategy lab'}).waitFor();
     await page.getByRole('tab',{name:'Algo Signals',exact:true}).click();
     await page.getByRole('button',{name:'AI Agent',exact:true}).click();
-    await page.getByRole('heading',{name:'AI market research agent'}).waitFor();
-    await page.getByRole('heading',{name:'Trading rehearsal'}).waitFor();
-    assert.equal(await page.getByRole('button',{name:'Run risk rehearsal'}).isDisabled(),true);
-    assert.equal(await page.getByRole('button',{name:'Run AI research'}).isDisabled(),true);
+    await page.getByRole('heading',{name:'AI Market Research Team (3-Tier Trust Gate)'}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'Run Trust-Gated Research'}).isDisabled(),true);
     assert.equal(await page.getByRole('button',{name:'AI Agent'}).getAttribute('aria-pressed'),'true');
     await page.getByRole('button',{name:'Normal Algo',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:'Normal Algo'}).getAttribute('aria-pressed'),'true');

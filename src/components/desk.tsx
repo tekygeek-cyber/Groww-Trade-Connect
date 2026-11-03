@@ -15,6 +15,7 @@ import { SignalNewsPanel } from './signal-news-panel';
 
 
 import { useMarketQuotes } from '../lib/quotes-context';
+import { usePortfolio } from '../lib/portfolio-context';
 import {
   api,
   expiryLabel,
@@ -45,9 +46,10 @@ const MarketNewsPanel = lazy(() => import('./market-news-panel').then(m => ({ de
 const BrokerStatusModal = lazy(() => import('./broker-status-modal').then(m => ({ default: m.BrokerStatusModal })));
 const LivelinessModal = lazy(() => import('./liveliness-modal').then(m => ({ default: m.LivelinessModal })));
 
-const TABS = ['signals','news','heatmap','health','portfolio','strategies','algo','gtt','alerts','user'] as const;
+const TABS = ['signals','news','heatmap','health','portfolio','strategies','algo','gtt','alerts','user','overview'] as const;
 type DeskTab = typeof TABS[number];
 const TAB_DETAILS: Record<DeskTab,{title:string;subtitle:string}> = {
+  overview:{title:'Research overview',subtitle:'Portfolio exposure, market health, and research shortcuts in one place.'},
   signals:{title:'Signal intelligence',subtitle:'Scan market setups and review signal evidence.'},
   news:{title:'Market news',subtitle:'Investigate catalysts and events before making decisions.'},
   heatmap:{title:'Market landscape',subtitle:'Explore market breadth and concentration.'},
@@ -301,9 +303,15 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
           <TabButton id="gtt" selected={tab === 'gtt'} onSelect={() => setTab('gtt')} label="GTT Placement" />
           <TabButton id="alerts" selected={tab === 'alerts'} onSelect={() => setTab('alerts')} label="Alerts" />
           <TabButton id="user" selected={tab === 'user'} onSelect={() => setTab('user')} label="User" />
+          <TabButton id="overview" selected={tab === 'overview'} onSelect={() => setTab('overview')} label="Overview" />
         </div>
 
         {/* Inactive tabs are unmounted to avoid hidden provider calls and background work. */}
+        {tab === 'overview' && (
+          <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-overview" aria-labelledby="tab-overview">
+            <ResearchOverview sample={sample} quoteStatus={quoteStatus} dataSourceLabel={dataSourceLabel} onNavigate={setTab} />
+          </div>
+        )}
         {tab === 'signals' && (
           <div className="desk-panel mt-6 min-w-0" role="tabpanel" id="panel-signals" aria-labelledby="tab-signals">
             <Suspense fallback={<DeskLoading label="signals" />}>
@@ -404,6 +412,69 @@ export function Desk({ sample, onSignOut }: { sample: boolean; onSignOut: () => 
         )}      </main>
     </div>
   );
+}
+
+
+/** Read-only dashboard. Browser portfolio entries are not verified broker balances. */
+function ResearchOverview({sample,quoteStatus,dataSourceLabel,onNavigate}:{
+  sample:boolean;
+  quoteStatus:string;
+  dataSourceLabel:string;
+  onNavigate:(tab:DeskTab)=>void;
+}) {
+  const {summary,holdings,cashBalances} = usePortfolio();
+  const {market,isSessionOpen} = useMarketQuotes();
+  const rows = Object.entries(summary.byMarket).filter(([,value])=>value.count>0);
+  const maxWeight = Math.max(0,...rows.map(([,value])=>value.weight));
+  const metrics = [
+    {label:'Indicative holdings value',value:summary.currentValue.toLocaleString('en-IN',{maximumFractionDigits:2}),detail:'Mixed-market model units; not a converted account total'},
+    {label:'Unrealized return',value:Number.isFinite(summary.unrealizedPnLPct)?summary.unrealizedPnLPct.toFixed(2)+'%':'Unavailable',detail:'Model calculation, not broker-confirmed'},
+    {label:'Positions tracked',value:String(holdings.length),detail:'Locally stored entries'},
+    {label:'Market data',value:quoteStatus,detail:dataSourceLabel||'Provider not specified'},
+  ];
+  return <div className="space-y-5">
+    <p role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-300">
+      {sample?'Sample workspace: all values are illustrative.':'Research workspace: portfolio entries are locally stored, not reconciled with broker accounts.'}
+      {' '}No live order execution is available.
+    </p>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {metrics.map(item=><article key={item.label} className="min-w-0 rounded-xl border border-border bg-surface p-4">
+        <p className="text-xs text-muted">{item.label}</p>
+        <p className="num mt-2 break-words text-xl font-semibold text-fg">{item.value}</p>
+        <p className="mt-2 text-xs text-muted">{item.detail}</p>
+      </article>)}
+    </div>
+    <div className="grid gap-4 lg:grid-cols-2">
+      <section className="rounded-xl border border-border bg-surface p-5" aria-label="Market allocation">
+        <h2 className="text-base font-semibold">Indicative market allocation</h2>
+        <p className="mt-1 text-xs text-muted">Existing portfolio model weights; review currency assumptions before using for decisions.</p>
+        {rows.length===0?<p className="mt-4 text-sm text-muted">No holdings available.</p>:<div className="mt-4 space-y-3">
+          {rows.map(([key,value])=><div key={key}>
+            <div className="mb-1 flex justify-between gap-2 text-xs"><span className="uppercase">{key}</span><span className="num">{value.weight.toFixed(1)}%</span></div>
+            <div className="h-2 overflow-hidden rounded-full bg-bg"><div className="h-full rounded-full bg-primary" style={{width:Math.max(0,Math.min(100,value.weight))+'%'}} /></div>
+          </div>)}
+        </div>}
+      </section>
+      <section className="rounded-xl border border-border bg-surface p-5" aria-label="Risk and data integrity">
+        <h2 className="text-base font-semibold">Risk and data integrity</h2>
+        <div className="mt-4 space-y-3 text-sm">
+          <div className="flex justify-between gap-3"><span className="text-muted">Largest model market weight</span><strong className="num">{maxWeight.toFixed(1)}%</strong></div>
+          <div className="flex justify-between gap-3"><span className="text-muted">Market session</span><strong>{isSessionOpen?'Open (calendar estimate)':'Closed (calendar estimate)'}</strong></div>
+          <div className="flex justify-between gap-3"><span className="text-muted">Quote provenance</span><strong>{quoteStatus}</strong></div>
+          <div className="flex justify-between gap-3"><span className="text-muted">Trading execution</span><strong className="text-watch">Disabled</strong></div>
+          <div className="border-t border-border pt-3 text-xs text-muted">Cash ledger: INR {cashBalances.INR.toLocaleString('en-IN')}, USD {cashBalances.USD.toLocaleString('en-US')}, USDT {cashBalances.USDT.toLocaleString('en-US')}. These are separate currencies and are not summed.</div>
+        </div>
+      </section>
+    </div>
+    <section className="rounded-xl border border-border bg-surface p-5">
+      <h2 className="text-base font-semibold">Research shortcuts</h2>
+      <p className="mt-1 text-xs text-muted">Selected market: {MARKETS[market].label}. Open existing research modules without submitting trades.</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {([{tab:'signals',label:'Signal intelligence'},{tab:'portfolio',label:'Portfolio details'},{tab:'health',label:'Data health'},{tab:'news',label:'Market news'},{tab:'strategies',label:'Strategy lab'}] as const).map(item=>
+          <button key={item.tab} type="button" onClick={()=>onNavigate(item.tab)} className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-semibold hover:border-primary focus-visible:outline-2 focus-visible:outline-primary">{item.label}</button>)}
+      </div>
+    </section>
+  </div>;
 }
 
 function TabButton({
