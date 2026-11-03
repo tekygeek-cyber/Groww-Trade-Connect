@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  BrainCircuit, ShieldCheck, ShieldAlert, Play, AlertTriangle, Clock3, Cpu,
+  BrainCircuit, ShieldCheck, ShieldAlert, Play, AlertTriangle, Activity, Clock3, Cpu,
   ClipboardCheck, Database, LockKeyhole, CheckCircle2, Link2, Award,
   Sparkles, Check, ChevronDown, ChevronUp
 } from 'lucide-react';
@@ -166,9 +166,9 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
             </p>
           </div>
           <div className="flex flex-col items-start gap-2">
-            <span className={'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ' + (state?.ready ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400' : 'border-amber-500/25 bg-amber-500/10 text-amber-400')}>
-              <span className={'size-2 rounded-full ' + (state?.ready ? 'bg-emerald-400' : 'bg-amber-400')} />
-              {checking ? 'Checking model…' : state?.ready ? 'Local LLM ready' : 'LLM offline'}
+            <span role="status" aria-live="polite" className={'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ' + (checking ? 'border-border bg-surface-2 text-muted' : state?.ready ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400' : 'border-amber-500/25 bg-amber-500/10 text-amber-400')}>
+              <span className={'size-2 rounded-full ' + (checking ? 'bg-muted' : state?.ready ? 'bg-emerald-400' : 'bg-amber-400')} />
+              {checking ? 'Checking local model…' : state?.ready ? 'Local LLM ready' : 'LLM offline'}
             </span>
             <span className="flex items-center gap-1.5 text-xs text-muted">
               <Cpu className="size-3.5" /> {state?.model || 'qwen3:4b'} / Ollama · 3 trust-gated agents
@@ -298,7 +298,10 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
             </select>
           </label>
           <label className="block text-xs font-semibold text-muted">
-            Research focus (optional)
+            <span className="flex items-center justify-between gap-3">
+              <span>Research focus <span className="font-normal">(optional)</span></span>
+              <span className="num font-normal text-muted">{focus.length}/160</span>
+            </span>
             <input
               aria-label="AI research focus"
               maxLength={160}
@@ -322,8 +325,13 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
             <Play className="size-4" /> {running ? 'Trust-gated team evaluating…' : 'Run Trust-Gated Research'}
           </button>
         </div>
+        {running&&(
+          <p className="mt-4 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs leading-relaxed text-muted" role="status" aria-live="polite">
+            <Activity className="mt-0.5 size-4 shrink-0 text-primary" />
+            The analyst, risk reviewer, and trust gatekeeper are evaluating verified evidence. This may take up to 90 seconds.
+          </p>
+        )}
       </div>
-
       {error && <p className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-400" role="alert">{error}</p>}
 
       {/* Results View */}

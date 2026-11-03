@@ -44,6 +44,8 @@ try {
     await page.getByRole('tab',{name:'Algo Signals',exact:true}).click();
     await page.getByRole('button',{name:'AI Agent',exact:true}).click();
     await page.getByRole('heading',{name:'AI Market Research Team (3-Tier Trust Gate)'}).waitFor();
+    await page.getByText('Research focus (optional)').waitFor();
+    await page.getByText('0/160').waitFor();
     assert.equal(await page.getByRole('button',{name:'Run Trust-Gated Research'}).isDisabled(),true);
     assert.equal(await page.getByRole('button',{name:'AI Agent'}).getAttribute('aria-pressed'),'true');
     await page.getByRole('button',{name:'Normal Algo',exact:true}).click();

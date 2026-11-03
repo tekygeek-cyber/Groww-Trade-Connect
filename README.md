@@ -109,13 +109,11 @@ bun install
 cp .env.example .env
 ```
 
-Update the values for:
+Set these values as needed:
 
-- `GEMINI_API_KEY`
-- `APP_URL`
-- `AI_ENABLED`
-- `AI_MODEL`
-- `AI_OLLAMA_URL`
+- `GEMINI_API_KEY` (optional; enables Gemini-powered market-news briefings)
+- `APP_URL` (when required by your hosting environment)
+- `AI_ENABLED`, `AI_MODEL`, and `AI_OLLAMA_URL` (Ollama settings; no API key required)
 
 ### Run locally
 

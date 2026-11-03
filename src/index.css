@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@source not "../awesome-llm-apps";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
