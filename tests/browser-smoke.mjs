@@ -19,8 +19,9 @@ try {
     assert.equal(await page.evaluate(() => localStorage.getItem('groww-connect-login')), null);
 
     await page.goto(base + '/identity-lab', { waitUntil: 'domcontentloaded' });
-    await page.getByRole('heading', { name: 'Owner sign-in lab' }).waitFor();
-    assert.equal(await page.getByText('No public registration', { exact: false }).count(), 1);
+    await page.getByRole('heading', { name: 'Welcome to your private research desk' }).waitFor();
+    await page.getByText('Invite-only owner access.', { exact: false }).waitFor();
+    assert.equal(await page.getByText('Groww API Key', { exact: true }).count(), 0);
 
     await page.goto(base + '/?sample=true', { waitUntil: 'domcontentloaded' });
     await page.getByRole('heading', { name: 'Signal intelligence' }).waitFor();
