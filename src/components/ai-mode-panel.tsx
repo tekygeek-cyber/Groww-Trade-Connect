@@ -87,6 +87,8 @@ type AgentRun = {
   events: AgentEvent[];
   agents: { name: string; status: string; runId: string; steps: number; toolCalls: number; role?: string }[];
   trustGate?: TrustGateData;
+  diagnostics?: { observations: number; annualizedVolatilityPct: number; maxObservedDrawdownPct: number; observedReturnPct: number; limitations: string };
+  researchIntegrity?: { score: number; description: string; accepted: boolean };
   evidence: { market: string; symbol: string; source: string; asOf: string; bars: number };
   tradingEnabled: boolean;
   disclaimer: string;
@@ -368,6 +370,32 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
             </div>
           </div>
 
+          <section className="space-y-3" aria-label="Historical research diagnostics">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold text-fg">Historical research diagnostics</h4>
+              <span className="text-xs text-muted">Daily closes · {result.evidence.asOf} · {result.evidence.source}</span>
+            </div>
+            {result.diagnostics ? (
+              <div className="grid gap-3 sm:grid-cols-3">
+                {[
+                  ['Observed return', result.diagnostics.observedReturnPct],
+                  ['Annualized historical volatility', result.diagnostics.annualizedVolatilityPct],
+                  ['Maximum observed drawdown', result.diagnostics.maxObservedDrawdownPct],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-xl border border-border bg-bg p-3">
+                    <p className="text-xs text-muted">{label}</p>
+                    <p className="mt-1 text-xl font-semibold tabular-nums text-fg">{Number(value).toFixed(2)}%</p>
+                  </div>
+                ))}
+                <p className="text-xs leading-relaxed text-muted sm:col-span-3">{result.diagnostics.limitations}</p>
+              </div>
+            ) : <p className="text-xs text-muted">Historical diagnostics unavailable for this result.</p>}
+            <p className="text-xs text-muted">Research integrity measures evidence and process checks, not forecast accuracy or investment confidence.
+              {result.researchIntegrity && !result.researchIntegrity.accepted ? ' Research was not accepted by the deterministic gate.' : ''}
+            </p>
+            <p className="text-xs text-muted">News catalysts: no independently attributed article feed is available in this report. No news claim is treated as verified.</p>
+          </section>
+
           {/* Trust-Gated Score Card & Verification Dashboard */}
           {result.trustGate && (
             <div className="rounded-xl border border-border bg-bg/60 p-4">
@@ -375,7 +403,7 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
                 {/* Score Dial */}
                 <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-surface p-3 text-center">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-muted">
-                    <Award className="size-4 text-primary" /> Trust Score
+                    <Award className="size-4 text-primary" /> Research Integrity
                   </div>
                   <div className="mt-1 text-3xl font-bold tracking-tight text-fg">
                     {result.trustGate.trustScore}
@@ -479,7 +507,7 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
                 <span className="flex items-center gap-2">
                   <Link2 className="size-3.5 text-primary" />
                   Cryptographic SHA-256 Audit Chain ({result.trustGate.chain.blocksCount} Blocks) ·
-                  <span className="text-emerald-400"> Tamper-evident verified</span>
+                  <span className={result.trustGate.chain.verified ? 'text-emerald-400' : 'text-rose-400'}> {result.trustGate.chain.verified ? 'Tamper-evident verified' : 'Verification failed'}</span>
                 </span>
                 {showChain ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
               </button>
