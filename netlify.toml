@@ -5,7 +5,7 @@
   publish = "dist"
 
 [build.environment]
-  NODE_VERSION = "22"
+  NODE_VERSION = "24"
   # Preview only: show owner Identity lab, not legacy Groww API-key sign-in.
   # This frontend flag is not an authorization mechanism.
   VITE_OWNER_AUTH_LAB = "true"
