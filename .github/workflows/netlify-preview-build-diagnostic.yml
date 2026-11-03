@@ -1,0 +1,43 @@
+name: Netlify-compatible build diagnostic (no deploy)
+
+on:
+  push:
+    branches: [feature/owner-only-auth-foundation-20261103]
+    paths:
+      - .github/workflows/netlify-preview-build-diagnostic.yml
+      - package.json
+      - package-lock.json
+      - bun.lock
+      - src/**
+      - server/**
+      - netlify/**
+      - netlify.toml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  npm-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Clean install as a standard Netlify npm project
+        run: npm ci --no-audit --no-fund
+      - name: TypeScript check
+        run: npm run lint
+      - name: Build using existing project script
+        run: npm run build
+      - name: Verify static frontend and Functions source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s dist/index.html
+          test -s netlify/functions/identity-owner-session.mjs
+          test -s netlify/functions/owner-session.mjs
+          echo 'PASS: npm install, compiled app and Netlify Functions source'
