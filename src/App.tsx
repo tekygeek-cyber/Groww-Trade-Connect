@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Desk } from './components/desk';
 import { LoginScreen } from './components/login-screen';
 import { OwnerIdentityLogin } from './components/owner-identity-login';
-import { IdentityLabScreen } from './components/identity-lab-screen';
 import { AccentInit } from './components/accent';
 import { AlertsProvider } from './lib/alerts-context';
 import { QuotesProvider } from './lib/quotes-context';
@@ -92,23 +91,20 @@ function LegacyApp() {
 
 
 /**
- * Dedicated Identity lab only. The legacy desk remains unchanged until
- * its Groww-based API/session dependencies are migrated in Step 3.
- * Identity callbacks may arrive at / with a hash; handle them here.
+ * Identity lab remains separate until the legacy Express APIs are migrated.
+ * VITE_OWNER_AUTH_LAB=true replaces the entire app entry with owner login.
+ * The dedicated /identity-lab route permits local UI smoke tests without
+ * activating unported private account endpoints.
  */
 export default function App() {
-  // Private Identity UI is opt-in until the serverless API migration is complete.
-  // In lab mode, the legacy Groww-backed dashboard is deliberately unreachable.
-  if (import.meta.env.VITE_OWNER_AUTH_LAB === 'true') {
+  const hash = typeof window === 'undefined' ? '' : window.location.hash;
+  const identityCallback =
+    /^#(?:invite_token|recovery_token|confirmation_token|email_change_token|access_token)=/.test(hash);
+  const identityLabRoute = typeof window !== 'undefined' &&
+    window.location.pathname === '/identity-lab';
+
+  if (import.meta.env.VITE_OWNER_AUTH_LAB === 'true' || identityLabRoute || identityCallback) {
     return <OwnerIdentityLogin />;
   }
-  return <LegacyGrowwApp />;
-}
-
-function LegacyGrowwApp() {
-  const hash = typeof window === 'undefined' ? '' : window.location.hash;
-  const identityCallback = /^#(?:invite_token|recovery_token|confirmation_token|email_change_token|access_token)=/.test(hash);
-  const isIdentityLab = typeof window !== 'undefined' &&
-    (window.location.pathname === '/identity-lab' || identityCallback);
-  return isIdentityLab ? <IdentityLabScreen /> : <LegacyApp />;
+  return <LegacyApp />;
 }
