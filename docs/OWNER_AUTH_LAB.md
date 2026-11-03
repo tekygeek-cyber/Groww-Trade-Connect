@@ -1,74 +1,62 @@
-# Owner-only authentication lab: Step 1
+# Groww Trade Connect owner-authentication engineering lab
 
-Status: **foundation only**. Do not merge or deploy until separately reviewed and approved.
+**Status: Step 2 implemented on a feature branch only. Not merged or deployed.**
+This is an isolated application Identity implementation, not a claim that legacy Express APIs have migrated.
 
-## Baseline audit
+## The separation you are learning
 
-The current dashboard login is still tied to the Groww broker session:
+1. **Netlify private-project access** is the outer site access control. `netlify/functions/owner-session.mjs` uses a verified Netlify team account from `context.user`, gated by `OWNER_NETLIFY_USER_ID`.
+2. **Netlify Identity** is the new in-app authentication mechanism. `netlify/functions/identity-owner-session.mjs` uses `getUser()` from `@netlify/identity` and enforces the immutable **Identity user ID** from `OWNER_IDENTITY_USER_ID`. Identity IDs and Netlify team IDs are never interchangeable.
+3. **Groww, Kraken and other brokers** are external connections, not an application identity. Their credentials should be managed only after app login, during Step 3.
 
-- `src/App.tsx` opens the dashboard after `/api/auth/status`, which checks the Groww session.
-- `src/components/login-screen.tsx` uses Groww API key, secret or TOTP as sign-in credentials.
-- `server.ts` protects most private `/api/*` routes with `readSession()` from `server/groww-service.ts`.
-- `server/groww-service.ts` stores an expiring Groww broker session on local disk. Its 06:00 IST expiry must **not** become the application identity expiry.
-- `/?sample=true` and public demo endpoints can bypass the browser login. Private production mode needs an explicit access model for them.
+## Step 1, already completed
 
-## What Step 1 adds
+- `server/owner-access-policy.mjs` denies missing configuration (503), no verified identity (401) and wrong identity (403).
+- The Netlify private-site owner probe is `/api/owner/session`.
+- `tests/owner-access-policy.test.mjs` verifies missing config, forged claims, owner matching and GET-only behavior.
 
-- `server/owner-access-policy.mjs`: independent fail-closed authorization of a **trusted, already verified** identity object against a configured immutable ID. Email matching, client role claims and broker credentials never establish ownership.
-- `netlify/functions/owner-session.mjs`: isolated Netlify Functions v2 GET endpoint `/api/owner/session`. It uses **Netlify private-project authenticated `context.user`**, not an untrusted request header or a Groww session. This endpoint has no effect on existing Express routes.
-- `tests/owner-access-policy.test.mjs`: unit and isolated function tests for owner approval, missing owner configuration, unauthenticated requests, wrong-user denial, fake headers, GET-only behavior and no-store responses.
-- The existing auth test command now includes these tests.
+## Step 2, implemented in this branch
 
-## Why there are two identity concepts
+- `@netlify/identity@2.0.0` is pinned in `package.json` with synchronized `bun.lock` and `package-lock.json`.
+- `/api/identity/session` is a separate Netlify Functions v2 GET endpoint. It obtains the **verified Identity user** from the official server-side SDK; client-supplied IDs, claimed roles, emails, Groww sessions and headers cannot authenticate.
+- `server/identity-owner-handler.mjs` makes backend authorization testable without Netlify credentials.
+- `src/components/owner-identity-login.tsx` provides email/password sign-in, invite acceptance, password recovery and reset, logout, and separate authorized/unavailable/denied states. No Groww API keys are requested.
+- All accepted sign-ins must pass the server endpoint's owner-ID check. An unauthorized authenticated Identity user is logged out from the lab.
+- `src/App.tsx` renders the Identity lab at `/identity-lab` for UI smoke tests, or as the exclusive frontend when `VITE_OWNER_AUTH_LAB=true` is set for a controlled lab build.
+- With `VITE_OWNER_AUTH_LAB=true`, the legacy Groww-backed dashboard is intentionally unavailable, even after an authorized sign-in. **Do not remove this barrier before Step 3 authorization migration.**
+- `tests/identity-owner-handler.test.mjs` verifies owner success, denied/anonymous access, missing owner config, provider errors, header forgery and GET-only behavior. The existing CI also tests the legacy browser and private API regression paths.
 
-**Netlify private project access** authenticates a Netlify account and, on supported deployments, makes its verified account available through `context.user`.
+## Required Netlify setup before ANY approved private preview
 
-**Netlify Identity** is separate and allows an application-specific sign-in. It uses `@netlify/identity` and server-side `getUser()`. A Netlify account ID and a Netlify Identity user ID are not interchangeable. If the final app uses Netlify Identity for the in-app login, the server-side owner guard must receive the user from the Identity SDK and compare it against a separately configured `OWNER_IDENTITY_USER_ID`.
+None of the following has been performed in this task.
 
-Step 1 deliberately uses the first mechanism as a **minimal, testable, platform-authenticated owner gate**. It does not claim to complete the future application sign-in.
+1. Create/identify a Netlify project whose **production and preview visibility are Private**. Verify access is restricted to your Netlify account.
+2. Enable Netlify Identity from the Netlify dashboard. Set **Registration → Invite only** and invite only the intended application owner. Do not enable public signup.
+3. Complete the invitation via `handleAuthCallback()` and `acceptInvite()` in the new login UI.
+4. Obtain the stable verified **Identity user ID** from trusted Netlify administration, not from a browser-provided field or guessed email. Configure `OWNER_IDENTITY_USER_ID` only in the server-side Netlify environment. It must be different in purpose from `OWNER_NETLIFY_USER_ID` for outer project access.
+5. In a dedicated lab build, set `VITE_OWNER_AUTH_LAB=true` to replace the legacy app entry with the owner sign-in screen. **This is a public frontend feature flag, not a secret and not a security boundary.**
+6. Verify the Netlify Functions v2 endpoint `/api/identity/session` actually receives Netlify Identity cookies on a protected deploy. Local isolated tests do not validate provider integration or email delivery.
+7. Configure no real broker credentials and no private holdings in staging until deployed route isolation and data privacy are checked.
+8. Keep `main` unchanged and require explicit approval to merge, publish or create a preview.
 
-## Configuration needed for future protected preview, NOT now
+Netlify Identity is an external service. Login and email callback integration cannot be considered verified without an approved, protected Netlify deployment.
 
-1. Make the Netlify project and all Deploy Previews Private, and verify the access policy works for your account.
-2. In a private server-side environment, set `OWNER_NETLIFY_USER_ID` to the trusted stable ID of your Netlify account. Do not guess the ID or use an email instead. Do not place it in `VITE_*` variables.
-3. Deploy and inspect the Netlify context only after approval. This cannot be completely validated in the standalone Express test environment.
-4. Confirm an unauthorized account cannot access private project routes and that the owner has access to `/api/owner/session`.
+## Next required migration, Step 3
 
-The owner ID is an identifier, not a password. It does not eliminate the need for private access and backend authorization.
+- Replace legacy `/api/auth/status` with application Identity status, not Groww token status.
+- Migrate the Express `/api/*` session checks to a trusted Identity-aware backend or serverless function architecture.
+- Protect every private route, including sample mode and personal portfolio data. A private site setting alone is insufficient.
+- Move Groww login to an authenticated connection-management screen and encrypted durable credential store.
+- Add real authenticated browser E2E tests for login, logout, refresh, expired sessions and denied users.
+- Keep live broker execution disabled and preserve existing deterministic risk controls.
 
-## Next incremental steps
+## Release blockers
 
-**Step 2: Application login with Netlify Identity**
+- No Netlify project settings were changed.
+- No application owner Identity user was created or invited.
+- No Netlify Function was deployed or exercised with real Identity cookies.
+- Existing Express private APIs remain broker-session guarded.
+- No secure post-login broker credential vault exists yet.
+- No merge into `main` was requested or performed.
 
-- Configure Invite only in Netlify Identity.
-- Install `@netlify/identity` with synchronized lockfiles.
-- Use documented `login()`, `handleAuthCallback()`, `getUser()` and `logout()` flows.
-- Verify the **Identity user ID** server-side with an independent owner policy; do not trust email or browser state alone.
-- Add real login, logout, refresh, invite and expired-session tests in a protected Netlify Deploy Preview.
-- Keep authentication requirements enforced on every protected backend function.
-
-**Step 3: Broker separation**
-
-- Refactor `/api/auth/status` to mean **application** identity, not Groww status.
-- Move Groww login to a separately authenticated `/api/connections/groww` flow with durable encrypted credentials and read-only capability checks.
-- Remove the Groww credential fields from the application login page.
-- Update the frontend to open the desk with application identity and show disconnected broker state independently.
-- Protect or remove anonymous sample-mode bypasses for private production.
-
-**Step 4: Serverless storage, migration and deployed E2E tests**
-
-- Replace existing filesystem/in-memory broker/session state with durable, appropriately secured storage.
-- Migrate existing Express authorization checks to Netlify-compatible middleware/functions.
-- Verify production and preview privacy; simulate 401/403 and ensure market research remains read-only.
-- Build, run regression/security/browser suites and obtain explicit approval before merge or production deployment.
-
-## Definition of done for Step 1
-
-- [x] Branch created from a verified `main` commit.
-- [x] Pure owner policy has no broker dependency.
-- [x] Netlify owner-session endpoint uses trusted platform identity only.
-- [x] Regression tests added to the existing auth test command.
-- [ ] GitHub CI green on the feature branch.
-- [ ] In-app login replaced. **Not in scope of Step 1.**
-- [ ] Netlify private preview validated. **Requires approval and setup.**
-- [ ] Merge into `main`. **Explicitly prohibited without owner approval.**
+See the feature-branch GitHub Actions workflow `owner-auth-lab-verify.yml` for the current TypeScript, build, unit, integration, HTTP and desktop/mobile smoke verification.
