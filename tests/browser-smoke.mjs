@@ -24,6 +24,15 @@ try {
     const first = page.getByRole('tab', {name:'Signals', exact:true});
     assert.equal(await first.getAttribute('aria-selected'),'true');
 
+    await page.getByRole('tab', {name:'Overview', exact:true}).click();
+    await page.getByRole('heading', {name:'Research overview'}).waitFor();
+    await page.getByRole('heading', {name:'Indicative market allocation'}).waitFor();
+    await page.getByRole('heading', {name:'Risk and data integrity'}).waitFor();
+    await page.getByText('No live order execution is available.', {exact:false}).waitFor();
+    assert.equal(await page.locator('[role="tabpanel"]').count(),1);
+    await page.getByRole('button', {name:'Portfolio details'}).click();
+    await page.getByRole('heading', {name:'Portfolio workspace'}).waitFor();
+
     await page.getByRole('tab', {name:'Portfolio', exact:true}).click();
     await page.getByRole('heading', {name:'Portfolio workspace'}).waitFor();
     await page.getByRole('heading', {name:'Multi-Market Stock Portfolio'}).waitFor();
