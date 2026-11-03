@@ -91,6 +91,7 @@ test('research suppresses unsupported final model answer',async()=>{
  const r=await researchWithAi({...evidence(),focus:'',evidence:evidence(),
   model:fake([{content:'BUY now'}])});
  assert.equal(r.status,'incomplete_evidence');assert.equal(r.answer,null);assert.equal(r.tradingEnabled,false);
+ assert.equal(r.researchIntegrity.accepted,false);
 });
 test('research passes only after all four mandatory tools and executes trust-gated agent team',async()=>{
  const requiredNames=['read_market_evidence','backtest_sma_rule','check_hypothetical_risk','execution_capabilities'];
@@ -108,6 +109,11 @@ test('research passes only after all four mandatory tools and executes trust-gat
   model});
  assert.equal(r.status,'completed');assert.equal(r.toolCalls,4);
  assert.equal(r.answer,'NO SIGNAL pending independent review');
+ assert.equal(r.researchIntegrity.accepted,true);
+ assert.match(r.researchIntegrity.description,/not prediction accuracy/);
+ assert.equal(r.diagnostics.observations,90);
+ assert.ok(Number.isFinite(r.diagnostics.annualizedVolatilityPct));
+ assert.ok(r.diagnostics.maxObservedDrawdownPct<=0);
  assert.deepEqual(toolSets,[allTools,allTools,[],[]]);
  assert.ok(prompts[2].length<=1800);
  assert.match(prompts[2],/"liveOrderPlacement":false/);
