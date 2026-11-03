@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis
+} from 'recharts';
+import {
   BrainCircuit, ShieldCheck, ShieldAlert, Play, AlertTriangle, Activity, Clock3, Cpu,
   ClipboardCheck, Database, LockKeyhole, CheckCircle2, Link2, Award,
   Sparkles, Check, ChevronDown, ChevronUp
@@ -29,6 +32,18 @@ type AgentStatus = {
   }[];
 };
 
+type AiMetrics = {
+  windowDays: number;
+  bucketHours: number;
+  totalRuns: number;
+  buckets: {
+    bucketStart: string;
+    runCount: number;
+    successCount: number;
+    successRate: number | null;
+    averageLatencyMs: number | null;
+  }[];
+};
 
 type AgentEvent = {
   type: string;
@@ -103,6 +118,10 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
   const [result, setResult] = useState<AgentRun | null>(null);
   const [showChain, setShowChain] = useState(false);
   const [showStarterCatalog, setShowStarterCatalog] = useState(false);
+  const [metrics, setMetrics] = useState<AiMetrics | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(true);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
+  const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
     setSymbol(symbols[0]?.ticker || '');
@@ -125,6 +144,31 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
     void refreshStatus();
   }, []);
 
+  async function refreshMetrics() {
+    setMetricsLoading(true);
+    try {
+      setMetrics(await api<AiMetrics>('/api/ai/metrics'));
+      setMetricsError(null);
+    } catch (err) {
+      setMetrics(null);
+      setMetricsError(err instanceof Error ? err.message : 'AI metrics are unavailable');
+    } finally {
+      setMetricsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshMetrics();
+  }, []);
+
+  useEffect(() => {
+    const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updatePreference = () => setReducedMotion(preference.matches);
+    updatePreference();
+    preference.addEventListener('change', updatePreference);
+    return () => preference.removeEventListener('change', updatePreference);
+  }, []);
+
   async function analyze() {
     if (sample || running || !state?.ready || !symbol) return;
     setRunning(true);
@@ -140,10 +184,15 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
       setError(err instanceof Error ? err.message : 'AI research failed');
     } finally {
       setRunning(false);
+      await refreshMetrics();
     }
   }
 
   const disabled = checking || running || sample || !state?.ready || !symbol;
+  const chartData = metrics?.buckets.map(bucket => ({
+    ...bucket,
+    time: new Date(bucket.bucketStart).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric' })
+  })) || [];
 
   return (
     <section className="space-y-5" aria-label="AI research mode">
@@ -190,6 +239,71 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
           </p>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5" aria-labelledby="ai-performance-heading">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 id="ai-performance-heading" className="text-sm font-semibold text-fg">AI research performance trends</h3>
+            <p className="mt-1 text-xs text-muted">Latency and completed-run rate · rolling 7-day window, 6-hour buckets</p>
+          </div>
+          <span className="rounded-full border border-border bg-bg/70 px-2.5 py-1 text-[11px] text-muted">
+            {metricsLoading ? 'Updating…' : metrics ? `${metrics.totalRuns} recorded runs` : 'Private run history'}
+          </span>
+        </div>
+        {metricsError ? (
+          <p className="rounded-lg border border-border bg-bg/70 p-3 text-xs text-muted" role="status">
+            Sign in to view private research history.
+          </p>
+        ) : metricsLoading ? (
+          <p className="py-8 text-center text-xs text-muted" role="status">Loading research metrics…</p>
+        ) : !metrics?.totalRuns ? (
+          <p className="rounded-lg border border-border bg-bg/70 p-3 text-xs text-muted" role="status">
+            No research runs recorded in this server session yet. Completed and failed runs will appear here.
+          </p>
+        ) : (
+          <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+            <div className="min-w-0 rounded-xl border border-border/80 bg-bg/50 p-3" role="img" aria-label="Average AI research latency by six-hour interval in milliseconds">
+              <h4 className="mb-2 text-xs font-medium text-muted">Average latency <span className="text-primary">(ms)</span></h4>
+              <div className="h-44 min-w-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData} margin={{ top: 8, right: 12, bottom: 0, left: -16 }} accessibilityLayer>
+                    <CartesianGrid stroke="var(--line)" strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="time" tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={28} />
+                    <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} width={46} />
+                    <Tooltip
+                      contentStyle={{ background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 10, fontSize: 12 }}
+                      labelStyle={{ color: 'var(--fg)' }}
+                      formatter={(value) => [`${value ?? '—'} ms`, 'Average latency']}
+                    />
+                    <Line type="monotone" dataKey="averageLatencyMs" name="Average latency" stroke="var(--accent)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={!reducedMotion} animationDuration={650} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <div className="min-w-0 rounded-xl border border-border/80 bg-bg/50 p-3" role="img" aria-label="AI research success rate by six-hour interval in percent">
+              <h4 className="mb-2 text-xs font-medium text-muted">Success rate <span className="text-emerald-400">(%)</span></h4>
+              <div className="h-44 min-w-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData} margin={{ top: 8, right: 12, bottom: 0, left: -16 }} accessibilityLayer>
+                    <CartesianGrid stroke="var(--line)" strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="time" tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={28} />
+                    <YAxis domain={[0, 100]} tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} width={46} tickFormatter={value => `${value}%`} />
+                    <Tooltip
+                      contentStyle={{ background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 10, fontSize: 12 }}
+                      labelStyle={{ color: 'var(--fg)' }}
+                      formatter={(value) => [`${value ?? '—'}%`, 'Success rate']}
+                    />
+                    <Line type="monotone" dataKey="successRate" name="Success rate" stroke="var(--up)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={!reducedMotion} animationDuration={650} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        )}
+        {metrics?.totalRuns ? (
+          <p className="mt-3 text-[11px] text-muted">Success means the full trust-gated research run completed; failed and incomplete runs count toward the rate. Metrics contain timestamps and durations only.</p>
+        ) : null}
+      </section>
 
       {/* Starter Agent Capability Matrix (awesome-ai-apps starter_ai_agents/*) */}
       <div className="rounded-2xl border border-border bg-surface p-4">

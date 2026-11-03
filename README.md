@@ -75,6 +75,8 @@ This repository is structured as a prototype trading environment for exploration
 - Symbol-specific AI research workflow using historical evidence
 - News-based signal context and catalyst grounding
 - Local or configured AI infrastructure support
+- Authenticated AI research performance trends for run latency and completion rate
+- Metrics are held in memory per server process, capped at 250 runs and retained for up to 7 days; only timestamps, durations, and completion flags are stored
 
 ### Broking and automation scaffolding
 

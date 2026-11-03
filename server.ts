@@ -26,6 +26,7 @@ import { isPrivilegedMutationBlocked } from './server/security-policy.mjs';
 import { isAnonymousApiAllowed } from './server/api-access.mjs';
 import { getConfiguredPublicOrigin, isSameOrigin, makeClearSessionCookie, makeSessionCookie, readSessionCookie } from './server/session-policy.mjs';
 import { getAiStatus,validateAiRequest,allowAiRequest,researchWithAi } from './server/ai/research-service.mjs';
+import { getAiRunMetrics, recordAiRunMetric } from './server/ai/run-metrics.mjs';
 import { verifyKrakenSpotReadOnly } from './server/kraken/spot-readonly.mjs';
 import { parseRehearsalInput, runTradingRehearsal, readRehearsalAudits } from './server/trading/rehearsal';
 import { fetchMarketNewsForSignals, fetchMarketNews } from './server/news-service';
@@ -104,6 +105,10 @@ app.get('/api/ai/status', async (_req, res) => {
   try { res.json(await getAiStatus()); }
   catch { res.status(503).json({enabled:false,ready:false,mode:'read_only',reason:'Invalid local model configuration'}); }
 });
+app.get('/api/ai/metrics', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(getAiRunMetrics());
+});
 app.post('/api/ai/research', async (req,res) => {
   const sessionId=readSessionCookie(req.headers.cookie);
   if(!sessionId || !readSession(sessionId)) return res.status(401).json({detail:'Authenticated research session required'});
@@ -115,8 +120,10 @@ app.post('/api/ai/research', async (req,res) => {
     return res.status(400).json({detail:err instanceof Error?err.message:'Invalid input'});
   }
   if(!allowAiRequest(sessionId)) return res.status(429).json({detail:'AI analysis rate limit: one run per 30 seconds'});
-  if(process.env.AI_ENABLED==='false') return res.status(503).json({detail:'AI mode disabled on this server'});
+  const startedAt = Date.now();
+  let success = false;
   try {
+    if(process.env.AI_ENABLED==='false') return res.status(503).json({detail:'AI mode disabled on this server'});
     const result=await fetchHistoricalCandles(args.market,args.symbol,false);
     const today=new Date().toISOString().slice(0,10);
     const evidence={
@@ -124,10 +131,17 @@ app.post('/api/ai/research', async (req,res) => {
       candles:result.candles.filter(c=>c.date<today).slice(-110)
     };
     const output=await researchWithAi({...args,evidence});
+    success = output.status === 'completed';
     res.setHeader('Cache-Control','no-store');
     res.json(output);
   } catch(err) {
     res.status(422).json({detail:err instanceof Error?err.message.slice(0,220):'Verified AI research unavailable'});
+  } finally {
+    recordAiRunMetric({
+      timestamp: startedAt,
+      latencyMs: Date.now() - startedAt,
+      success,
+    });
   }
 });
 

@@ -10,11 +10,11 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "node --test tests/auth-policy.test.mjs tests/security-policy.test.mjs tests/session-policy.test.mjs",
+    "test": "node --test tests/auth-policy.test.mjs tests/security-policy.test.mjs tests/session-policy.test.mjs tests/ai-run-metrics.test.mjs",
     "test:auth-integration": "tsx --test tests/groww-auth.test.ts",
     "test:rebalance": "tsx --test tests/rebalance-guards.test.ts",
     "test:market-integrity": "tsx --test tests/market-integrity.test.ts tests/market-data-integrity.test.ts",
-    "test:ai-harness": "node --test tests/ai-harness.test.mjs",
+    "test:ai-harness": "node --test tests/ai-harness.test.mjs tests/ai-run-metrics.test.mjs",
     "test:risk-gate": "tsx --test tests/risk-gate.test.ts",
     "test:mock-broker": "tsx --test tests/mock-broker.test.ts",
     "test:kraken-readonly": "node --test tests/kraken-spot-readonly.test.mjs"
@@ -31,6 +31,7 @@
     "motion": "^12.23.24",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "recharts": "^3.10.1",
     "vite": "^8.3.0",
     "ws": "^8.22.1"
   },
@@ -43,6 +44,7 @@
     "@types/ws": "^8.18.2",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.28.0",
+    "playwright": "^1.64.1",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2"
