@@ -21,7 +21,7 @@ export const TRUST_GATE_AGENT = Object.freeze({
 You evaluate the previous agents' findings against strict trust criteria:
 1. Verify evidence grounding (no fabricated metrics, only verified historical data).
 2. Enforce read-only policy (no broker submission, no automated trading commitments).
-3. Validate deterministic risk bounds (hypothetical allocation <= 30%, stop-loss <= 1.5%).
+3. Validate deterministic illustrative limits (hypothetical allocation <= 30% and portfolio risk at stop <= 1.5%).
 4. Verify cryptographic chain continuity.
 Provide a final trust-gated synthesis with an explicit gate decision: TRUST_APPROVED, TRUST_FLAGGED, or TRUST_BLOCKED.`,
 });
