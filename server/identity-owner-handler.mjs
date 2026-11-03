@@ -26,15 +26,8 @@ export function createIdentityOwnerSessionHandler({
       });
     }
 
-    const ownerId = getOwnerId();
-    const missingConfig = authorizeOwnerUser(null, ownerId);
-    if (missingConfig.status === 503) {
-      return Response.json({
-        authenticated: false, authorized: false,
-        code: missingConfig.code, detail: 'Application owner authorization is not configured',
-      }, { status: 503, headers });
-    }
-
+    // Verify the session before revealing any diagnostic about owner setup.
+    // A request header or browser-supplied user ID can never establish identity.
     let user;
     try {
       user = await getVerifiedUser();
@@ -46,7 +39,28 @@ export function createIdentityOwnerSessionHandler({
       }, { status: 503, headers });
     }
 
-    const decision = authorizeOwnerUser(user, ownerId);
+    if (!user || typeof user !== 'object' ||
+        Array.isArray(user) || typeof user.id !== 'string' || !user.id.trim()) {
+      return Response.json({
+        authenticated: false, authorized: false,
+        code: 'AUTHENTICATION_REQUIRED', detail: 'Sign in required',
+      }, { status: 401, headers });
+    }
+
+    const decision = authorizeOwnerUser(user, getOwnerId());
+    if (decision.status === 503) {
+      // An immutable Identity user ID is not a credential. Only a verified,
+      // signed-in caller receives their own ID as a configuration hint.
+      // Never authorize API access from this response or from first login.
+      return Response.json({
+        authenticated: true, authorized: false,
+        code: 'OWNER_NOT_CONFIGURED',
+        identityId: user.id,
+        setting: 'OWNER_IDENTITY_USER_ID',
+        detail: 'Configure the owner ID in the private Netlify Functions environment',
+      }, { status: 503, headers });
+    }
+
     if (decision.status !== 200) {
       return Response.json({
         authenticated: decision.status === 403,
