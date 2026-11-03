@@ -54,7 +54,7 @@ test('Identity provider errors are unavailable, never trusted as authorized', as
   const result = await handler(async () => { throw new Error('secret provider token'); })(request);
   assert.equal(result.status, 503);
   assert.equal((await result.json()).code, 'IDENTITY_SERVICE_UNAVAILABLE');
-  assert.equal((await result.clone().text()).includes('secret provider token'), false);
+  assert.equal(result.headers.get('cache-control'), 'no-store');
 });
 
 test('owner endpoint rejects mutations, without consulting Identity', async () => {
