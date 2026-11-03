@@ -30,6 +30,8 @@ jobs:
         run: bun run test:market-integrity
       - name: AI harness
         run: bun run test:ai-harness
+      - name: AI research diagnostics
+        run: node --test tests/ai-research-diagnostics.test.mjs
       - name: Risk gate
         run: bun run test:risk-gate
       - name: Mock broker
