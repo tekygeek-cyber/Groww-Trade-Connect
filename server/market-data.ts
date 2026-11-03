@@ -78,7 +78,10 @@ async function fetchKrakenCryptoCandles(symbol: string): Promise<{ candles: Cand
   const krakenPair = sym === 'BTC' ? 'XBTUSD' : sym === 'DOGE' ? 'XDGUSD' : `${sym}USD`;
   const url = `https://api.kraken.com/0/public/OHLC?pair=${krakenPair}&interval=1440`;
 
-  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 GrowwConnectDesk/1.0' } });
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 GrowwConnectDesk/1.0' },
+    signal: AbortSignal.timeout(8000),
+  });
   if (!res.ok) throw new Error(`Kraken OHLC failed: ${res.status}`);
 
   const json: any = await res.json();
@@ -117,7 +120,10 @@ async function fetchBinanceCryptoCandles(symbol: string): Promise<{ candles: Can
   const pair = `${symbol.toUpperCase()}USDT`;
   const url = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1d&limit=365`;
 
-  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 GrowwConnectDesk/1.0' } });
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 GrowwConnectDesk/1.0' },
+    signal: AbortSignal.timeout(8000),
+  });
   if (!res.ok) throw new Error(`Binance klines failed: ${res.status}`);
 
   const raw: any[] = await res.json();
