@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Desk } from './components/desk';
 import { LoginScreen } from './components/login-screen';
+import { OwnerIdentityLogin } from './components/owner-identity-login';
 import { IdentityLabScreen } from './components/identity-lab-screen';
 import { AccentInit } from './components/accent';
 import { AlertsProvider } from './lib/alerts-context';
@@ -96,6 +97,15 @@ function LegacyApp() {
  * Identity callbacks may arrive at / with a hash; handle them here.
  */
 export default function App() {
+  // Private Identity UI is opt-in until the serverless API migration is complete.
+  // In lab mode, the legacy Groww-backed dashboard is deliberately unreachable.
+  if (import.meta.env.VITE_OWNER_AUTH_LAB === 'true') {
+    return <OwnerIdentityLogin />;
+  }
+  return <LegacyGrowwApp />;
+}
+
+function LegacyGrowwApp() {
   const hash = typeof window === 'undefined' ? '' : window.location.hash;
   const identityCallback = /^#(?:invite_token|recovery_token|confirmation_token|email_change_token|access_token)=/.test(hash);
   const isIdentityLab = typeof window !== 'undefined' &&
