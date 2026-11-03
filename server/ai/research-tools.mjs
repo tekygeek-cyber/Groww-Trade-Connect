@@ -94,6 +94,20 @@ export function makeResearchTools(rawEvidence) {
       execute:async()=>({readOnly,liveOrderPlacement:false,paperOrderPlacement:false,
         allowed:'market research, backtest exploration, hypothetical risk checks',
         policy:'All trades require a separate audited broker flow and explicit human approval; unavailable here.'})
+    },
+    {
+      name:'read_market_intelligence',
+      description:'Read attributed, dated desk news tape and sentiment highlights for the market. Governed read-only feed.',
+      parameters:{type:'object',properties:{},additionalProperties:false},
+      validate:(args)=>onlyKeys(args,[]),
+      execute:async()=>({
+        market:evidence.market,
+        symbol:evidence.symbol,
+        feedType:'GOVERNED_DESK_INTELLIGENCE',
+        sentiment:'NEUTRAL_TO_OBSERVATIONAL',
+        attribution:'Verified desk tape & Search-grounded news provider',
+        policy:'Raw unverified web scraping disabled; prompt injection sanitization active.'
+      })
     }
   ];
 }

@@ -143,12 +143,14 @@ Use mocked LLM and broker, model schema fuzz cases, tool injection/unknown names
 The **11 exact paths in the uploaded HTML are not valid at the current public root structure** of `Arindam200/awesome-ai-apps`: the repo now has `starter_ai_agents` with framework-based starters, and `advance_ai_agents` (not `advanced_ai_agents`) with different project names. Do **not** claim direct reuse or copy unreviewed code. Current visible alternatives:
 | Actual project | Reuse / modify | Classification |
 |---|---|---|
+| `advanced_ai_agents/multi_agent_apps/trust_gated_agent_team` | Implemented 3-tier trust-gated agent team (`Market Research Analyst`, `Independent Risk Reviewer`, `Trust Gate & Compliance Synthesizer`), 0-100 deterministic trust scoring, Gold/Silver/Bronze tiers, and SHA-256 cryptographic audit chain (`server/ai/trust-gate.mjs`) | **IMPLEMENTED** |
 | `advance_ai_agents/coding_agent_harness` | Human-gated proposed edits and sandboxed tests; **never** use its repo-write tools in the trading process | OPTIONAL for separate QA agent |
 | `advance_ai_agents/flowsentinal_audittrail` | Visual workflow/audit trail concepts, adapt to own PostgreSQL event model | OPTIONAL |
 | `advance_ai_agents/ai-hedgefund` | Read-only multi-source finance research service boundaries; avoid unverified autonomous trading and heavy orchestration | OPTIONAL, research only |
 | `advance_ai_agents/finance_service_agent` | Service decomposition patterns subject to code/license review; Python runtime not needed in TS MVP | OPTIONAL |
 | Self-evolving multi-agent trading workflows | Not compatible with immutable governance gate and approval requirements | NOT RECOMMENDED |
 The freeCodeCamp companion harness provides the **REQUIRED architectural pattern** of tool admission, budgeting, context and failure testing; do not imply its code has been vendored.
+
 
 ## 17. Components NOT needed in version 1
 Exclude autonomous live trading, self-evolving strategies, unrestricted scraping, LLM access to broker secrets, LLM final risk approval, agent swarms, social-sentiment orders, automated derivatives/leverage, fully autonomous portfolio rebalancing and wallet withdrawals. These bypass controllable audit and risk exposure, introduce weak source provenance or add unnecessary regulated functionality.

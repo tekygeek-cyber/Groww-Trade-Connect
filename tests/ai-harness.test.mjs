@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import {runAgentHarness,selectAgentContext} from '../server/ai/harness.mjs';
 import {getLocalOllamaUrl,ollamaModel} from '../server/ai/ollama.mjs';
 import {makeResearchTools,validateEvidence} from '../server/ai/research-tools.mjs';
-import {researchWithAi,validateAiRequest} from '../server/ai/research-service.mjs';
+import {researchWithAi,validateAiRequest,getAiStatus} from '../server/ai/research-service.mjs';
+import {STARTER_AGENT_CATALOG} from '../server/ai/agents.mjs';
+import {evaluateTrustMetrics,buildTrustChain,verifyTrustChain} from '../server/ai/trust-gate.mjs';
+
+
 const fake = steps => {
  let i=0;
  return {provider:'test',model:'scripted',generate:async()=>steps[i++]??(()=>{throw new Error('Script exhausted')})()};
@@ -88,14 +92,15 @@ test('research suppresses unsupported final model answer',async()=>{
   model:fake([{content:'BUY now'}])});
  assert.equal(r.status,'incomplete_evidence');assert.equal(r.answer,null);assert.equal(r.tradingEnabled,false);
 });
-test('research passes only after all four mandatory tools',async()=>{
- const names=['read_market_evidence','backtest_sma_rule','check_hypothetical_risk','execution_capabilities'];
+test('research passes only after all four mandatory tools and executes trust-gated agent team',async()=>{
+ const requiredNames=['read_market_evidence','backtest_sma_rule','check_hypothetical_risk','execution_capabilities'];
+ const allTools=[...requiredNames,'read_market_intelligence'];
  const args=[{},{lookback:60},{action:'HOLD',allocationPct:0,stopLossPct:0},{}];
  const toolSets=[],prompts=[];
  const model={provider:'test',model:'scripted',generate:async({tools,messages})=>{
   toolSets.push(tools.map(tool=>tool.name));
   prompts.push(messages[0]?.content);
-  if(toolSets.length===1) return {content:'',toolCalls:names.map((n,i)=>call('c'+i,n,args[i]))};
+  if(toolSets.length===1) return {content:'',toolCalls:requiredNames.map((n,i)=>call('c'+i,n,args[i]))};
   if(toolSets.length===2) return {content:'Evidence gathered for independent review'};
   return {content:'NO SIGNAL pending independent review'};
  }};
@@ -103,12 +108,20 @@ test('research passes only after all four mandatory tools',async()=>{
   model});
  assert.equal(r.status,'completed');assert.equal(r.toolCalls,4);
  assert.equal(r.answer,'NO SIGNAL pending independent review');
- assert.deepEqual(toolSets,[names,names,[]]);
+ assert.deepEqual(toolSets,[allTools,allTools,[],[]]);
  assert.ok(prompts[2].length<=1800);
  assert.match(prompts[2],/"liveOrderPlacement":false/);
- assert.deepEqual(r.agents.map(item=>item.name),['Market Research Analyst','Independent Risk Reviewer']);
+ assert.deepEqual(r.agents.map(item=>item.name),['Market Research Analyst','Independent Risk Reviewer','Trust Gate & Compliance Synthesizer']);
  assert.ok(r.events.some(event=>event.agent==='Independent Risk Reviewer'));
+ assert.ok(r.events.some(event=>event.agent==='Trust Gate & Compliance Synthesizer'));
+
+ assert.ok(r.trustGate);
+ assert.equal(r.trustGate.trustTier,'GOLD');
+ assert.equal(r.trustGate.gateDecision,'TRUST_APPROVED');
+ assert.equal(r.trustGate.chain.verified,true);
+ assert.equal(r.trustGate.chain.blocksCount,4);
 });
+
 test('request validation rejects unknown markets, tools and prompts',()=>{
  assert.deepEqual(validateAiRequest({market:'nasdaq',symbol:'AAPL'}),{market:'nasdaq',symbol:'AAPL',focus:''});
  assert.throws(()=>validateAiRequest({market:'wrong',symbol:'AAPL'}),/Invalid/);
@@ -140,3 +153,115 @@ test('latest complete tool batch cannot silently disappear from model context', 
     {role:'tool',callId:'a',name:'read',content:'x'.repeat(2000),isError:false}];
   assert.throws(()=>selectAgentContext(group,200),/Latest complete tool batch/);
 });
+
+test('trust-gated agent team calculates deterministic trust score and assigns Gold, Silver, Bronze tiers', () => {
+  const ev = evidence();
+  const validTools = [
+    { tool: 'read_market_evidence', result: { market: 'nasdaq', symbol: 'AAPL' } },
+    { tool: 'backtest_sma_rule', result: { test: 'historical_sma_experiment' } },
+    { tool: 'check_hypothetical_risk', result: { status: 'WITHIN_ILLUSTRATIVE_LIMITS' } },
+    { tool: 'execution_capabilities', result: { readOnly: true, liveOrderPlacement: false } }
+  ];
+
+  const gold = evaluateTrustMetrics({
+    evidence: ev,
+    toolEvidence: validTools,
+    researchStatus: 'completed',
+    reviewStatus: 'completed'
+  });
+  assert.equal(gold.trustScore, 100);
+  assert.equal(gold.trustTier, 'GOLD');
+  assert.equal(gold.gateDecision, 'TRUST_APPROVED');
+  assert.equal(gold.evidenceGroundingPct, 100);
+
+  // Warning state -> Silver / Flagged
+  const flagged = evaluateTrustMetrics({
+    evidence: ev,
+    toolEvidence: [
+      { tool: 'read_market_evidence', result: { market: 'nasdaq', symbol: 'AAPL' } },
+      { tool: 'backtest_sma_rule', result: { test: 'historical_sma_experiment' } },
+      { tool: 'check_hypothetical_risk', result: { status: 'BLOCKED_BY_ILLUSTRATIVE_LIMITS' } },
+      { tool: 'execution_capabilities', result: { readOnly: true, liveOrderPlacement: false } }
+    ],
+    researchStatus: 'completed',
+    reviewStatus: 'completed'
+  });
+  assert.equal(flagged.trustScore, 80);
+  assert.equal(flagged.trustTier, 'SILVER');
+  assert.equal(flagged.gateDecision, 'TRUST_FLAGGED');
+
+
+  // Missing required tools -> Bronze / Blocked
+  const bronze = evaluateTrustMetrics({
+    evidence: ev,
+    toolEvidence: [{ tool: 'read_market_evidence', result: {} }],
+    researchStatus: 'incomplete_evidence',
+    reviewStatus: 'skipped'
+  });
+  assert.ok(bronze.trustScore < 50);
+  assert.equal(bronze.trustTier, 'BRONZE');
+  assert.equal(bronze.gateDecision, 'TRUST_BLOCKED');
+});
+
+test('SHA-256 cryptographic audit chain detects tampering in any historical block', () => {
+  const ev = evidence();
+  const validTools = [
+    { tool: 'read_market_evidence', result: { close: 150 } },
+    { tool: 'backtest_sma_rule', result: {} },
+    { tool: 'check_hypothetical_risk', result: { status: 'WITHIN_ILLUSTRATIVE_LIMITS' } },
+    { tool: 'execution_capabilities', result: { readOnly: true, liveOrderPlacement: false } }
+  ];
+
+  const blocks = buildTrustChain({
+    runId: 'test-run-12345',
+    market: 'nasdaq',
+    symbol: 'AAPL',
+    evidence: ev,
+    toolEvidence: validTools,
+    researchRun: { runId: 'test-run-12345', status: 'completed' },
+    reviewRun: { runId: 'review-123', status: 'completed', answer: 'Verified WATCH' },
+    gateDecision: 'TRUST_APPROVED',
+    trustScore: 95
+  });
+
+  assert.equal(blocks.length, 4);
+  const verifyResult = verifyTrustChain(blocks);
+  assert.equal(verifyResult.verified, true);
+  assert.equal(verifyResult.blocksCount, 4);
+  assert.ok(verifyResult.genesisHash.length === 64);
+
+  // Tamper with block 1 payload
+  const tamperedBlocks = JSON.parse(JSON.stringify(blocks));
+  tamperedBlocks[1].payloadHash = '0'.repeat(64);
+  const tamperCheck = verifyTrustChain(tamperedBlocks);
+  assert.equal(tamperCheck.verified, false);
+  assert.equal(tamperCheck.tamperedBlock, 1);
+
+  // Tamper with hash continuity between block 1 and block 2
+  const brokenLinkBlocks = JSON.parse(JSON.stringify(blocks));
+  brokenLinkBlocks[2].previousHash = 'f'.repeat(64);
+  const brokenCheck = verifyTrustChain(brokenLinkBlocks);
+  assert.equal(brokenCheck.verified, false);
+  assert.equal(brokenCheck.tamperedBlock, 2);
+});
+
+test('starter agent catalog defines all 4 starter agents and binds to agent.md specification', async () => {
+  assert.ok(STARTER_AGENT_CATALOG.ai_data_analysis_agent);
+  assert.ok(STARTER_AGENT_CATALOG.xai_finance_agent);
+  assert.ok(STARTER_AGENT_CATALOG.openai_research_agent);
+  assert.ok(STARTER_AGENT_CATALOG.web_scraping_ai_agent);
+
+  const status = await getAiStatus();
+  assert.ok(Array.isArray(status.starterAgents));
+  assert.equal(status.starterAgents.length, 4);
+
+  const ids = status.starterAgents.map(a => a.id);
+  assert.deepEqual(ids, [
+    'starter_ai_agents/ai_data_analysis_agent',
+    'starter_ai_agents/xai_finance_agent',
+    'starter_ai_agents/openai_research_agent',
+    'starter_ai_agents/web_scraping_ai_agent'
+  ]);
+});
+
+
