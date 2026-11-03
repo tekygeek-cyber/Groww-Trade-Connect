@@ -229,6 +229,20 @@ test('trust-gated agent team calculates deterministic trust score and assigns Go
     reviewStatus: 'completed'
   });
   assert.equal(enabledPaperTrading.gateDecision,'TRUST_BLOCKED');
+  const fakeProvider = evaluateTrustMetrics({
+    evidence: {...ev,source:'Unverified Stooq mirror'},
+    toolEvidence: validTools,
+    researchStatus: 'completed',
+    reviewStatus: 'completed'
+  });
+  assert.equal(fakeProvider.gateDecision,'TRUST_BLOCKED');
+  const stale = evaluateTrustMetrics({
+    evidence: {...ev,candles:ev.candles.map(bar=>({...bar,date:new Date(Date.parse(bar.date+'T00:00:00Z')-20*86400000).toISOString().slice(0,10)}))},
+    toolEvidence: validTools,
+    researchStatus: 'completed',
+    reviewStatus: 'completed'
+  });
+  assert.equal(stale.gateDecision,'TRUST_BLOCKED');
 
 
   // Warning state -> Silver / Flagged
