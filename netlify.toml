@@ -6,6 +6,9 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # Preview only: show owner Identity lab, not legacy Groww API-key sign-in.
+  # This frontend flag is not an authorization mechanism.
+  VITE_OWNER_AUTH_LAB = "true"
 
 [functions]
   directory = "netlify/functions"
