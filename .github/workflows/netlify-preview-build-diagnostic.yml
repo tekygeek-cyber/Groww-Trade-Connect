@@ -31,13 +31,17 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: TypeScript check
         run: npm run lint
-      - name: Build using existing project script
+      - name: Verify existing standalone Node build
         run: npm run build
-      - name: Verify static frontend and Functions source
+      - name: Run the exact Netlify frontend-only build
+        run: npm run build:netlify
+      - name: Verify publish directory contains no Express server bundle
         shell: bash
         run: |
           set -euo pipefail
           test -s dist/index.html
+          test ! -e dist/server.js
           test -s netlify/functions/identity-owner-session.mjs
           test -s netlify/functions/owner-session.mjs
-          echo 'PASS: npm install, compiled app and Netlify Functions source'
+          grep -q 'command = "npm run build:netlify"' netlify.toml
+          echo 'PASS: npm install, standalone build, Netlify frontend and no server bundle in dist'
