@@ -17,7 +17,8 @@
     "test:ai-harness": "node --test tests/ai-harness.test.mjs tests/ai-run-metrics.test.mjs",
     "test:risk-gate": "tsx --test tests/risk-gate.test.ts",
     "test:mock-broker": "tsx --test tests/mock-broker.test.ts",
-    "test:kraken-readonly": "node --test tests/kraken-spot-readonly.test.mjs"
+    "test:kraken-readonly": "node --test tests/kraken-spot-readonly.test.mjs",
+    "build:netlify": "vite build"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
