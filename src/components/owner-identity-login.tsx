@@ -65,6 +65,10 @@ export function OwnerIdentityLogin() {
       try {
         const callback = await callbackPromise.current;
         if (cancelled) return;
+        if (callback && window.location.hash) {
+          // Clear consumed invitation/recovery tokens from browser navigation history.
+          window.history.replaceState({}, '', window.location.pathname + window.location.search);
+        }
 
         if (callback?.type === 'invite' && callback.token) {
           setInviteToken(callback.token);
