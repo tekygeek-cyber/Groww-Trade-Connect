@@ -1,4 +1,5 @@
 import { ollamaHealth, ollamaModel } from './ollama.mjs';
+import { calculateResearchDiagnostics } from './research-diagnostics.mjs';
 import { makeResearchTools, validateEvidence } from './research-tools.mjs';
 import { runAgentHarness } from './harness.mjs';
 import { MARKET_RESEARCH_AGENT, RISK_REVIEW_AGENT, TRUST_GATE_AGENT, STARTER_AGENT_CATALOG } from './agents.mjs';
@@ -60,6 +61,7 @@ export function allowAiRequest(caller) {
 export async function researchWithAi({ market, symbol, focus, evidence, model = null }) {
   if (process.env.AI_ENABLED === 'false') throw new Error('AI disabled by administrator');
   const source = validateEvidence(evidence);
+  const diagnostics = calculateResearchDiagnostics(source.candles);
   const tools = makeResearchTools(source);
   const requested = focus.trim().slice(0, 160);
 
@@ -279,7 +281,7 @@ Provide the final trust-gated synthesis for ${market}/${symbol}. Confirm if TRUS
 
   return {
     status: finalStatus,
-    answer: finalStatus === 'completed' ? (gateRun?.answer || reviewRun?.answer || null) : null,
+    answer: finalStatus === 'completed' && trustMetrics.gateDecision === 'TRUST_APPROVED' && chainVerification.verified ? (gateRun?.answer || reviewRun?.answer || null) : null,
     error: researchStatus === 'incomplete_evidence' ? 'Required evidence or risk checks were not completed' :
       finalStatus !== 'completed' ? (gateRun?.error || reviewRun?.error || researchRun.error || 'Agent review did not complete') : null,
     runId: researchRun.runId,
@@ -290,6 +292,12 @@ Provide the final trust-gated synthesis for ${market}/${symbol}. Confirm if TRUS
     agents: runs,
     events,
     trustGate,
+    diagnostics,
+    researchIntegrity: {
+      score: trustMetrics.trustScore,
+      description: 'Measures evidence and process checks; not prediction accuracy or investment confidence.',
+      accepted: finalStatus === 'completed' && trustMetrics.gateDecision === 'TRUST_APPROVED' && chainVerification.verified,
+    },
     evidence: {
       market: source.market,
       symbol: source.symbol,
