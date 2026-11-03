@@ -172,7 +172,7 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
   }, []);
 
   async function analyze() {
-    if (sample || running || !state?.ready || !symbol) return;
+    if (sample || running || !state?.ready || !symbol || market === 'nifty') return;
     setRunning(true);
     setError(null);
     setResult(null);
@@ -190,7 +190,7 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
     }
   }
 
-  const disabled = checking || running || sample || !state?.ready || !symbol;
+  const disabled = checking || running || sample || !state?.ready || !symbol || market === 'nifty';
   const chartData = metrics?.buckets.map(bucket => ({
     ...bucket,
     time: new Date(bucket.bucketStart).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric' })
@@ -393,6 +393,12 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
             {!sample && <p className="mt-2 text-xs">On the server, install Ollama, run <code className="rounded bg-bg px-1.5 py-0.5">ollama pull qwen3:4b</code>, then start the Ollama service.</p>}
           </div>
         </div>
+      )}
+
+      {market === 'nifty' && (
+        <p className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 text-sm text-amber-400" role="status">
+          Verified NIFTY historical market data are not configured on this server. AI research is unavailable for this market; sample data will not be presented as verified research.
+        </p>
       )}
 
       {/* Input Form */}
