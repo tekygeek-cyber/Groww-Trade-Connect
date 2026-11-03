@@ -18,6 +18,10 @@ try {
 
     assert.equal(await page.evaluate(() => localStorage.getItem('groww-connect-login')), null);
 
+    await page.goto(base + '/identity-lab', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('heading', { name: 'Owner sign-in lab' }).waitFor();
+    assert.equal(await page.getByText('No public registration', { exact: false }).count(), 1);
+
     await page.goto(base + '/?sample=true', { waitUntil: 'domcontentloaded' });
     await page.getByRole('heading', { name: 'Signal intelligence' }).waitFor();
     assert.equal(await page.locator('[role="tabpanel"]').count(), 1);

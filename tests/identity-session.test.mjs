@@ -38,8 +38,8 @@ test('fake browser claims cannot establish identity', async () => {
 });
 
 test('missing owner config refuses all users, even valid identity users', async () => {
-  const response = await handler(async () => ({ id: ID }), undefined)(req);
-  // Explicit undefined means the configured owner environment variable is absent.
+  const response = await handler(async () => ({ id: ID }), null)(req);
+  // Null simulates missing owner configuration.
   assert.equal(response.status, 503);
   assert.equal((await response.json()).code, 'OWNER_NOT_CONFIGURED');
 });

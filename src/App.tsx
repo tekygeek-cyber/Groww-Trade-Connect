@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Desk } from './components/desk';
 import { LoginScreen } from './components/login-screen';
+import { IdentityLabScreen } from './components/identity-lab-screen';
 import { AccentInit } from './components/accent';
 import { AlertsProvider } from './lib/alerts-context';
 import { QuotesProvider } from './lib/quotes-context';
 import { PortfolioProvider } from './lib/portfolio-context';
 import { api, type SessionStatus } from './lib/api';
 
-export default function App() {
+function LegacyApp() {
   const [view, setView] = useState<'checking' | 'login' | 'desk'>('checking');
   const [sample, setSample] = useState<boolean>(false);
 
@@ -86,4 +87,18 @@ export default function App() {
       </QuotesProvider>
     </AlertsProvider>
   );
+}
+
+
+/**
+ * Dedicated Identity lab only. The legacy desk remains unchanged until
+ * its Groww-based API/session dependencies are migrated in Step 3.
+ * Identity callbacks may arrive at / with a hash; handle them here.
+ */
+export default function App() {
+  const hash = typeof window === 'undefined' ? '' : window.location.hash;
+  const identityCallback = /^#(?:invite_token|recovery_token|confirmation_token|email_change_token|access_token)=/.test(hash);
+  const isIdentityLab = typeof window !== 'undefined' &&
+    (window.location.pathname === '/identity-lab' || identityCallback);
+  return isIdentityLab ? <IdentityLabScreen /> : <LegacyApp />;
 }

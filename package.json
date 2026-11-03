@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "node --test tests/auth-policy.test.mjs tests/security-policy.test.mjs tests/session-policy.test.mjs tests/ai-run-metrics.test.mjs tests/owner-access-policy.test.mjs",
+    "test": "node --test tests/auth-policy.test.mjs tests/security-policy.test.mjs tests/session-policy.test.mjs tests/ai-run-metrics.test.mjs tests/owner-access-policy.test.mjs tests/identity-session.test.mjs",
     "test:auth-integration": "tsx --test tests/groww-auth.test.ts",
     "test:rebalance": "tsx --test tests/rebalance-guards.test.ts",
     "test:market-integrity": "tsx --test tests/market-integrity.test.ts tests/market-data-integrity.test.ts",
@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
+    "@netlify/identity": "2.0.0",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "d3": "^7.9.0",
