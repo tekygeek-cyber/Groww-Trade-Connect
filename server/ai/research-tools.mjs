@@ -97,16 +97,18 @@ export function makeResearchTools(rawEvidence) {
     },
     {
       name:'read_market_intelligence',
-      description:'Read attributed, dated desk news tape and sentiment highlights for the market. Governed read-only feed.',
+      description:'Check whether independently sourced market news is available. No news provider is configured; do not infer sentiment or invent citations.',
       parameters:{type:'object',properties:{},additionalProperties:false},
       validate:(args)=>onlyKeys(args,[]),
       execute:async()=>({
         market:evidence.market,
         symbol:evidence.symbol,
-        feedType:'GOVERNED_DESK_INTELLIGENCE',
-        sentiment:'NEUTRAL_TO_OBSERVATIONAL',
-        attribution:'Verified desk tape & Search-grounded news provider',
-        policy:'Raw unverified web scraping disabled; prompt injection sanitization active.'
+        feedType:'UNAVAILABLE',
+        sentiment:null,
+        attribution:null,
+        articles:[],
+        reason:'No attributed, dated news articles have been retrieved for this run.',
+        policy:'No unverified news, inferred sentiment or fabricated citations are permitted.'
       })
     }
   ];
