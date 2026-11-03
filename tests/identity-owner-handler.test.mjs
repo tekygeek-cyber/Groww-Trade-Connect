@@ -42,12 +42,29 @@ test('authenticated user with matching email but wrong immutable ID is denied', 
   assert.equal(body.code, 'OWNER_ACCESS_DENIED');
 });
 
-test('missing owner config fails closed without calling Identity', async () => {
+test('missing owner configuration returns verified caller ID but never grants access', async () => {
   let calls = 0;
   const result = await handler(async () => { calls++; return { id: owner }; }, '')(request);
   assert.equal(result.status, 503);
-  assert.equal((await result.json()).code, 'OWNER_NOT_CONFIGURED');
-  assert.equal(calls, 0);
+  assert.equal(result.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(await result.json(), {
+    authenticated: true, authorized: false,
+    code: 'OWNER_NOT_CONFIGURED',
+    identityId: owner,
+    setting: 'OWNER_IDENTITY_USER_ID',
+    detail: 'Configure the owner ID in the private Netlify Functions environment',
+  });
+  assert.equal(calls, 1);
+});
+
+test('unconfigured site never exposes setup ID to anonymous or forged callers', async () => {
+  const response = await handler(async () => null, '')(request);
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.authenticated, false);
+  assert.equal(body.authorized, false);
+  assert.equal(JSON.stringify(body).includes(owner), false);
+  assert.equal(JSON.stringify(body).includes('identityId'), false);
 });
 
 test('Identity provider errors are unavailable, never trusted as authorized', async () => {
