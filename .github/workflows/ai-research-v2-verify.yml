@@ -1,0 +1,59 @@
+name: AI research v2 verification (no deployment)
+on:
+  push:
+    branches:
+      - feature/ai-market-research-v2
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: TypeScript compilation
+        run: bun run lint
+      - name: Production build
+        run: bun run build
+      - name: Authentication and session regression
+        run: bun run test
+      - name: Auth integration regression
+        run: bun run test:auth-integration
+      - name: Rebalance safeguards
+        run: bun run test:rebalance
+      - name: Market integrity
+        run: bun run test:market-integrity
+      - name: AI harness
+        run: bun run test:ai-harness
+      - name: AI research diagnostics
+        run: node --test tests/ai-research-diagnostics.test.mjs
+      - name: Risk gate
+        run: bun run test:risk-gate
+      - name: Mock broker
+        run: bun run test:mock-broker
+      - name: Kraken read-only policy
+        run: bun run test:kraken-readonly
+      - name: Prompt contract
+        run: node --test tests/prompt-contract.test.mjs
+      - name: Install browser test dependencies
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps playwright
+          npx playwright install --with-deps chromium
+      - name: Desktop and mobile browser smoke, plus HTTP smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT=3000 bun run dev > /tmp/gtc-dashboard-dev.log 2>&1 &
+          PID=$!
+          trap 'kill $PID || true; cat /tmp/gtc-dashboard-dev.log' EXIT
+          ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/api/health > /dev/null; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = "1"
+          TEST_BASE_URL=http://127.0.0.1:3000 node --test tests/http-smoke.test.mjs
+          TEST_BASE_URL=http://127.0.0.1:3000 node tests/browser-smoke.mjs

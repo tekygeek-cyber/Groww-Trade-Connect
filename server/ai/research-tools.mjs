@@ -79,7 +79,10 @@ export function makeResearchTools(rawEvidence) {
         validNumber(a.allocationPct,0,100)&&validNumber(a.stopLossPct,0,100),
       execute:async({action,allocationPct,stopLossPct})=>{
         const riskPct=allocationPct*stopLossPct/100;
-        const passed=action==='HOLD'||(allocationPct<=30&&stopLossPct>0&&riskPct<=1.5);
+        // HOLD is only a no-change scenario when both hypothetical risk inputs are zero.
+        // Otherwise apply the same illustrative limits as for proposed trade actions.
+        const passed=(action==='HOLD'&&allocationPct===0&&stopLossPct===0)||
+          (action!=='HOLD'&&allocationPct<=30&&stopLossPct>0&&riskPct<=1.5);
         return {status:passed?'WITHIN_ILLUSTRATIVE_LIMITS':'BLOCKED_BY_ILLUSTRATIVE_LIMITS',
           action,allocationPct,stopLossPct,portfolioRiskAtStopPct:Number(riskPct.toFixed(3)),
           maxSingleAssetPct:30,maxRiskAtStopPct:1.5,
@@ -97,16 +100,18 @@ export function makeResearchTools(rawEvidence) {
     },
     {
       name:'read_market_intelligence',
-      description:'Read attributed, dated desk news tape and sentiment highlights for the market. Governed read-only feed.',
+      description:'Check whether independently sourced market news is available. No news provider is configured; do not infer sentiment or invent citations.',
       parameters:{type:'object',properties:{},additionalProperties:false},
       validate:(args)=>onlyKeys(args,[]),
       execute:async()=>({
         market:evidence.market,
         symbol:evidence.symbol,
-        feedType:'GOVERNED_DESK_INTELLIGENCE',
-        sentiment:'NEUTRAL_TO_OBSERVATIONAL',
-        attribution:'Verified desk tape & Search-grounded news provider',
-        policy:'Raw unverified web scraping disabled; prompt injection sanitization active.'
+        feedType:'UNAVAILABLE',
+        sentiment:null,
+        attribution:null,
+        articles:[],
+        reason:'No attributed, dated news articles have been retrieved for this run.',
+        policy:'No unverified news, inferred sentiment or fabricated citations are permitted.'
       })
     }
   ];

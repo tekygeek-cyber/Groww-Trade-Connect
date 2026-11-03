@@ -1,4 +1,5 @@
 import { ollamaHealth, ollamaModel } from './ollama.mjs';
+import { calculateResearchDiagnostics } from './research-diagnostics.mjs';
 import { makeResearchTools, validateEvidence } from './research-tools.mjs';
 import { runAgentHarness } from './harness.mjs';
 import { MARKET_RESEARCH_AGENT, RISK_REVIEW_AGENT, TRUST_GATE_AGENT, STARTER_AGENT_CATALOG } from './agents.mjs';
@@ -60,6 +61,10 @@ export function allowAiRequest(caller) {
 export async function researchWithAi({ market, symbol, focus, evidence, model = null }) {
   if (process.env.AI_ENABLED === 'false') throw new Error('AI disabled by administrator');
   const source = validateEvidence(evidence);
+  if (source.market !== market || source.symbol !== symbol) {
+    throw new TypeError('Research request does not match the verified market evidence');
+  }
+  const diagnostics = calculateResearchDiagnostics(source.candles, { market: source.market });
   const tools = makeResearchTools(source);
   const requested = focus.trim().slice(0, 160);
 
@@ -219,6 +224,11 @@ Provide the final trust-gated synthesis for ${market}/${symbol}. Confirm if TRUS
     trustScore: trustMetrics.trustScore
   });
   const chainVerification = verifyTrustChain(chainBlocks);
+  const accepted = finalStatus === 'completed' &&
+    trustMetrics.gateDecision === 'TRUST_APPROVED' && chainVerification.verified;
+  const publicStatus = finalStatus === 'completed' && !accepted
+    ? (trustMetrics.gateDecision === 'TRUST_FLAGGED' ? 'trust_flagged' : 'trust_blocked')
+    : finalStatus;
 
   const trustGate = {
     pattern: 'advanced_ai_agents/multi_agent_apps/trust_gated_agent_team',
@@ -278,10 +288,13 @@ Provide the final trust-gated synthesis for ${market}/${symbol}. Confirm if TRUS
   ];
 
   return {
-    status: finalStatus,
-    answer: finalStatus === 'completed' ? (gateRun?.answer || reviewRun?.answer || null) : null,
+    status: publicStatus,
+    answer: accepted ? (gateRun?.answer || reviewRun?.answer || null) : null,
     error: researchStatus === 'incomplete_evidence' ? 'Required evidence or risk checks were not completed' :
-      finalStatus !== 'completed' ? (gateRun?.error || reviewRun?.error || researchRun.error || 'Agent review did not complete') : null,
+      finalStatus !== 'completed' ? (gateRun?.error || reviewRun?.error || researchRun.error || 'Agent review did not complete') :
+      !accepted ? (chainVerification.verified
+        ? `Research rejected by deterministic trust gate (${trustMetrics.gateDecision}). No verified conclusion is available.`
+        : 'Research audit-chain verification failed. No verified conclusion is available.') : null,
     runId: researchRun.runId,
     model: agent.model || 'test-model',
     provider: agent.provider || 'test',
@@ -290,6 +303,12 @@ Provide the final trust-gated synthesis for ${market}/${symbol}. Confirm if TRUS
     agents: runs,
     events,
     trustGate,
+    diagnostics,
+    researchIntegrity: {
+      score: trustMetrics.trustScore,
+      description: 'Measures evidence and process checks; not prediction accuracy or investment confidence.',
+      accepted,
+    },
     evidence: {
       market: source.market,
       symbol: source.symbol,

@@ -102,6 +102,8 @@ type AgentRun = {
   events: AgentEvent[];
   agents: { name: string; status: string; runId: string; steps: number; toolCalls: number; role?: string }[];
   trustGate?: TrustGateData;
+  diagnostics?: { observations: number; annualizedVolatilityPct: number; maxObservedDrawdownPct: number; observedReturnPct: number; limitations: string };
+  researchIntegrity?: { score: number; description: string; accepted: boolean };
   evidence: { market: string; symbol: string; source: string; asOf: string; bars: number };
   tradingEnabled: boolean;
   disclaimer: string;
@@ -442,7 +444,7 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
         {running&&(
           <p className="mt-4 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs leading-relaxed text-muted" role="status" aria-live="polite">
             <Activity className="mt-0.5 size-4 shrink-0 text-primary" />
-            The analyst, risk reviewer, and trust gatekeeper are evaluating verified evidence. This may take up to 90 seconds.
+            The analyst, risk reviewer, and trust gatekeeper are evaluating historical evidence. Results appear after all required checks finish.
           </p>
         )}
       </div>
@@ -464,7 +466,7 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className={'rounded-full border px-3 py-1 text-xs font-semibold ' + (
-                result.status === 'completed' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+                result.status === 'completed' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : result.status === 'trust_blocked' ? 'border-red-500/30 bg-red-500/10 text-red-400' : 'border-amber-500/30 bg-amber-500/10 text-amber-400'
               )}>
                 {result.status.replace(/_/g, ' ')}
               </span>
@@ -482,6 +484,32 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
             </div>
           </div>
 
+          <section className="space-y-3" aria-label="Historical research diagnostics">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold text-fg">Historical research diagnostics</h4>
+              <span className="text-xs text-muted">Daily closes · {result.evidence.asOf} · {result.evidence.source}</span>
+            </div>
+            {result.diagnostics ? (
+              <div className="grid gap-3 sm:grid-cols-3">
+                {[
+                  ['Observed return', result.diagnostics.observedReturnPct],
+                  ['Annualized historical volatility', result.diagnostics.annualizedVolatilityPct],
+                  ['Maximum observed drawdown', result.diagnostics.maxObservedDrawdownPct],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-xl border border-border bg-bg p-3">
+                    <p className="text-xs text-muted">{label}</p>
+                    <p className="mt-1 text-xl font-semibold tabular-nums text-fg">{Number(value).toFixed(2)}%</p>
+                  </div>
+                ))}
+                <p className="text-xs leading-relaxed text-muted sm:col-span-3">{result.diagnostics.limitations}</p>
+              </div>
+            ) : <p className="text-xs text-muted">Historical diagnostics unavailable for this result.</p>}
+            <p className="text-xs text-muted">Research integrity measures evidence and process checks, not forecast accuracy or investment confidence.
+              {result.researchIntegrity && !result.researchIntegrity.accepted ? ' Research was not accepted by the deterministic gate.' : ''}
+            </p>
+            <p className="text-xs text-muted">News catalysts: no independently attributed article feed is available in this report. No news claim is treated as verified.</p>
+          </section>
+
           {/* Trust-Gated Score Card & Verification Dashboard */}
           {result.trustGate && (
             <div className="rounded-xl border border-border bg-bg/60 p-4">
@@ -489,7 +517,7 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
                 {/* Score Dial */}
                 <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-surface p-3 text-center">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-muted">
-                    <Award className="size-4 text-primary" /> Trust Score
+                    <Award className="size-4 text-primary" /> Research Integrity
                   </div>
                   <div className="mt-1 text-3xl font-bold tracking-tight text-fg">
                     {result.trustGate.trustScore}
@@ -593,7 +621,7 @@ export function AiModePanel({ market, sample }: { market: MarketType; sample: bo
                 <span className="flex items-center gap-2">
                   <Link2 className="size-3.5 text-primary" />
                   Cryptographic SHA-256 Audit Chain ({result.trustGate.chain.blocksCount} Blocks) ·
-                  <span className="text-emerald-400"> Tamper-evident verified</span>
+                  <span className={result.trustGate.chain.verified ? 'text-emerald-400' : 'text-rose-400'}> {result.trustGate.chain.verified ? 'Tamper-evident verified' : 'Verification failed'}</span>
                 </span>
                 {showChain ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
               </button>

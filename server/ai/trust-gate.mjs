@@ -144,16 +144,22 @@ export function evaluateTrustMetrics({ evidence, toolEvidence, researchStatus, r
   }
 
   // 2. Data Provenance & Freshness (Max 25 pts)
-  const isSourceVerified = evidence?.source && /Kraken|Binance|Stooq|Yahoo Finance/.test(evidence.source);
+  const isSourceAllowlisted = /^Daily candles: (Kraken public API|Binance public|Stooq|Yahoo Finance)$/.test(evidence?.source || '');
   const candleCount = evidence?.candles?.length || 0;
-  if (isSourceVerified && candleCount >= 55) {
+  const lastDate = evidence?.lastDate || evidence?.candles?.at(-1)?.date;
+  const lastTime = typeof lastDate === 'string' ? Date.parse(lastDate + 'T00:00:00Z') : NaN;
+  const now = Date.now();
+  const maxAgeMs = (evidence?.market === 'crypto' ? 3 : 8) * 86400000;
+  const provenanceOk = isSourceAllowlisted && candleCount >= 55 && Number.isFinite(lastTime) &&
+    lastTime <= now + 86400000 && now - lastTime <= maxAgeMs;
+  if (provenanceOk) {
     score += 25;
     checks.push({
       name: 'Data Provenance & Freshness',
       status: 'PASSED',
       score: 25,
       maxScore: 25,
-      detail: `Verified market provider (${evidence.source}) with ${candleCount} historical daily bars`
+      detail: `Allowlisted historical market source (${evidence.source}), ${candleCount} daily bars; source label does not independently authenticate the upstream provider`
     });
   } else {
     checks.push({
@@ -161,7 +167,7 @@ export function evaluateTrustMetrics({ evidence, toolEvidence, researchStatus, r
       status: 'FAILED',
       score: 0,
       maxScore: 25,
-      detail: 'Unverified source or insufficient candle history'
+      detail: 'Source label is not allowlisted, evidence is stale, or candle history is insufficient'
     });
   }
 
@@ -197,7 +203,8 @@ export function evaluateTrustMetrics({ evidence, toolEvidence, researchStatus, r
 
   // 4. Execution Sandbox Quarantine & Read-Only Policy (Max 20 pts)
   const execTool = (toolEvidence || []).find(t => t.tool === 'execution_capabilities');
-  const isQuarantined = execTool && execTool.result?.readOnly === true && execTool.result?.liveOrderPlacement === false;
+  const isQuarantined = execTool && execTool.result?.readOnly === true &&
+    execTool.result?.liveOrderPlacement === false && execTool.result?.paperOrderPlacement === false;
   if (isQuarantined) {
     score += 20;
     checks.push({
@@ -228,11 +235,13 @@ export function evaluateTrustMetrics({ evidence, toolEvidence, researchStatus, r
 
   // Determine Gate Decision: TRUST_APPROVED (>=70 and all required pass), TRUST_FLAGGED (50-69 or warning), TRUST_BLOCKED (<50 or missing required)
   let gateDecision = 'TRUST_BLOCKED';
-  const hasFatalFailure = missingTools.length > 0 || !isQuarantined || researchStatus !== 'completed';
+  const hasFatalFailure = missingTools.length > 0 || !isQuarantined || !provenanceOk ||
+    researchStatus !== 'completed' || reviewStatus !== 'completed';
 
   if (!hasFatalFailure && trustScore >= 70 && riskPassed) {
     gateDecision = 'TRUST_APPROVED';
-  } else if (trustScore >= 50 && !missingTools.includes('read_market_evidence')) {
+  } else if (researchStatus === 'completed' && reviewStatus === 'completed' &&
+    trustScore >= 50 && !missingTools.includes('read_market_evidence') && isQuarantined && provenanceOk) {
     gateDecision = 'TRUST_FLAGGED';
   } else {
     gateDecision = 'TRUST_BLOCKED';

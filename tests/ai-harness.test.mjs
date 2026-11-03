@@ -85,12 +85,14 @@ test('backtest tool and risk tool are deterministic and read-only',async()=>{
  const risk=tools.find(t=>t.name==='check_hypothetical_risk');
  assert.equal((await risk.execute({action:'BUY',allocationPct:40,stopLossPct:5})).status,'BLOCKED_BY_ILLUSTRATIVE_LIMITS');
  assert.equal((await risk.execute({action:'HOLD',allocationPct:0,stopLossPct:0})).status,'WITHIN_ILLUSTRATIVE_LIMITS');
+ assert.equal((await risk.execute({action:'HOLD',allocationPct:100,stopLossPct:100})).status,'BLOCKED_BY_ILLUSTRATIVE_LIMITS');
  assert.equal(tools.some(t=>/submit|execute_order|shell|write/.test(t.name)),false);
 });
 test('research suppresses unsupported final model answer',async()=>{
  const r=await researchWithAi({...evidence(),focus:'',evidence:evidence(),
   model:fake([{content:'BUY now'}])});
  assert.equal(r.status,'incomplete_evidence');assert.equal(r.answer,null);assert.equal(r.tradingEnabled,false);
+ assert.equal(r.researchIntegrity.accepted,false);
 });
 test('research passes only after all four mandatory tools and executes trust-gated agent team',async()=>{
  const requiredNames=['read_market_evidence','backtest_sma_rule','check_hypothetical_risk','execution_capabilities'];
@@ -108,6 +110,11 @@ test('research passes only after all four mandatory tools and executes trust-gat
   model});
  assert.equal(r.status,'completed');assert.equal(r.toolCalls,4);
  assert.equal(r.answer,'NO SIGNAL pending independent review');
+ assert.equal(r.researchIntegrity.accepted,true);
+ assert.match(r.researchIntegrity.description,/not prediction accuracy/);
+ assert.equal(r.diagnostics.observations,90);
+ assert.ok(Number.isFinite(r.diagnostics.annualizedVolatilityPct));
+ assert.ok(r.diagnostics.maxObservedDrawdownPct<=0);
  assert.deepEqual(toolSets,[allTools,allTools,[],[]]);
  assert.ok(prompts[2].length<=1800);
  assert.match(prompts[2],/"liveOrderPlacement":false/);
@@ -120,6 +127,39 @@ test('research passes only after all four mandatory tools and executes trust-gat
  assert.equal(r.trustGate.gateDecision,'TRUST_APPROVED');
  assert.equal(r.trustGate.chain.verified,true);
  assert.equal(r.trustGate.chain.blocksCount,4);
+});
+
+test('model completion cannot bypass a flagged deterministic trust decision',async()=>{
+ const required=['read_market_evidence','backtest_sma_rule','check_hypothetical_risk','execution_capabilities'];
+ const args=[{},{lookback:60},{action:'BUY',allocationPct:50,stopLossPct:8},{}];
+ const scripted=fake([
+   {content:'',toolCalls:required.map((name,i)=>call('flag'+i,name,args[i]))},
+   {content:'Evidence collected'},
+   {content:'Risk exceeds limits'},
+   {content:'TRUST_FLAGGED - do not trade'}
+ ]);
+ const r=await researchWithAi({...evidence(),focus:'',evidence:evidence(),model:scripted});
+ assert.equal(r.trustGate.gateDecision,'TRUST_FLAGGED');
+ assert.equal(r.status,'trust_flagged');
+ assert.equal(r.answer,null);
+ assert.match(r.error,/Research rejected/);
+ assert.equal(r.researchIntegrity.accepted,false);
+});
+
+test('research request must match evidence market and symbol',async()=>{
+ await assert.rejects(
+   researchWithAi({...evidence(),symbol:'MSFT',focus:'',evidence:evidence(),model:fake([])}),
+   /does not match/
+ );
+});
+
+test('news availability tool never invents attributed articles or sentiment',async()=>{
+ const tool=makeResearchTools(evidence()).find(t=>t.name==='read_market_intelligence');
+ const result=await tool.execute({});
+ assert.equal(result.feedType,'UNAVAILABLE');
+ assert.deepEqual(result.articles,[]);
+ assert.equal(result.sentiment,null);
+ assert.equal(result.attribution,null);
 });
 
 test('request validation rejects unknown markets, tools and prompts',()=>{
@@ -160,7 +200,7 @@ test('trust-gated agent team calculates deterministic trust score and assigns Go
     { tool: 'read_market_evidence', result: { market: 'nasdaq', symbol: 'AAPL' } },
     { tool: 'backtest_sma_rule', result: { test: 'historical_sma_experiment' } },
     { tool: 'check_hypothetical_risk', result: { status: 'WITHIN_ILLUSTRATIVE_LIMITS' } },
-    { tool: 'execution_capabilities', result: { readOnly: true, liveOrderPlacement: false } }
+    { tool: 'execution_capabilities', result: { readOnly: true, liveOrderPlacement: false, paperOrderPlacement: false } }
   ];
 
   const gold = evaluateTrustMetrics({
@@ -173,6 +213,37 @@ test('trust-gated agent team calculates deterministic trust score and assigns Go
   assert.equal(gold.trustTier, 'GOLD');
   assert.equal(gold.gateDecision, 'TRUST_APPROVED');
   assert.equal(gold.evidenceGroundingPct, 100);
+  const failedReview = evaluateTrustMetrics({
+    evidence: ev,
+    toolEvidence: validTools,
+    researchStatus: 'completed',
+    reviewStatus: 'model_error'
+  });
+  assert.equal(failedReview.gateDecision,'TRUST_BLOCKED');
+
+  const enabledPaperTrading = evaluateTrustMetrics({
+    evidence: ev,
+    toolEvidence: validTools.map(tool => tool.tool === 'execution_capabilities'
+      ? {...tool,result:{...tool.result,paperOrderPlacement:true}} : tool),
+    researchStatus: 'completed',
+    reviewStatus: 'completed'
+  });
+  assert.equal(enabledPaperTrading.gateDecision,'TRUST_BLOCKED');
+  const fakeProvider = evaluateTrustMetrics({
+    evidence: {...ev,source:'Unverified Stooq mirror'},
+    toolEvidence: validTools,
+    researchStatus: 'completed',
+    reviewStatus: 'completed'
+  });
+  assert.equal(fakeProvider.gateDecision,'TRUST_BLOCKED');
+  const stale = evaluateTrustMetrics({
+    evidence: {...ev,candles:ev.candles.map(bar=>({...bar,date:new Date(Date.parse(bar.date+'T00:00:00Z')-20*86400000).toISOString().slice(0,10)}))},
+    toolEvidence: validTools,
+    researchStatus: 'completed',
+    reviewStatus: 'completed'
+  });
+  assert.equal(stale.gateDecision,'TRUST_BLOCKED');
+
 
   // Warning state -> Silver / Flagged
   const flagged = evaluateTrustMetrics({
@@ -181,7 +252,7 @@ test('trust-gated agent team calculates deterministic trust score and assigns Go
       { tool: 'read_market_evidence', result: { market: 'nasdaq', symbol: 'AAPL' } },
       { tool: 'backtest_sma_rule', result: { test: 'historical_sma_experiment' } },
       { tool: 'check_hypothetical_risk', result: { status: 'BLOCKED_BY_ILLUSTRATIVE_LIMITS' } },
-      { tool: 'execution_capabilities', result: { readOnly: true, liveOrderPlacement: false } }
+      { tool: 'execution_capabilities', result: { readOnly: true, liveOrderPlacement: false, paperOrderPlacement: false } }
     ],
     researchStatus: 'completed',
     reviewStatus: 'completed'
@@ -209,7 +280,7 @@ test('SHA-256 cryptographic audit chain detects tampering in any historical bloc
     { tool: 'read_market_evidence', result: { close: 150 } },
     { tool: 'backtest_sma_rule', result: {} },
     { tool: 'check_hypothetical_risk', result: { status: 'WITHIN_ILLUSTRATIVE_LIMITS' } },
-    { tool: 'execution_capabilities', result: { readOnly: true, liveOrderPlacement: false } }
+    { tool: 'execution_capabilities', result: { readOnly: true, liveOrderPlacement: false, paperOrderPlacement: false } }
   ];
 
   const blocks = buildTrustChain({
