@@ -1,0 +1,22 @@
+# Netlify serves only the Vite frontend. The standalone Express build
+# remains for local/legacy Node CI and must never be placed in the web publish dir.
+[build]
+  command = "npm run build:netlify"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "24"
+  # Preview only: show owner Identity lab, not legacy Groww API-key sign-in.
+  # This frontend flag is not an authorization mechanism.
+  VITE_OWNER_AUTH_LAB = "true"
+
+[functions]
+  directory = "netlify/functions"
+
+# Allow the isolated Identity lab's client-side pathname to load on refresh.
+# Do not rewrite /api/* or all /* to index.html. Unmigrated private APIs
+# must fail closed instead of silently serving the React app shell.
+[[redirects]]
+  from = "/identity-lab"
+  to = "/index.html"
+  status = 200

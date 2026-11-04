@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Desk } from './components/desk';
 import { LoginScreen } from './components/login-screen';
+import { OwnerIdentityLogin } from './components/owner-identity-login';
 import { AccentInit } from './components/accent';
 import { AlertsProvider } from './lib/alerts-context';
 import { QuotesProvider } from './lib/quotes-context';
 import { PortfolioProvider } from './lib/portfolio-context';
 import { api, type SessionStatus } from './lib/api';
 
-export default function App() {
+function LegacyApp() {
   const [view, setView] = useState<'checking' | 'login' | 'desk'>('checking');
   const [sample, setSample] = useState<boolean>(false);
 
@@ -86,4 +87,24 @@ export default function App() {
       </QuotesProvider>
     </AlertsProvider>
   );
+}
+
+
+/**
+ * Identity lab remains separate until the legacy Express APIs are migrated.
+ * VITE_OWNER_AUTH_LAB=true replaces the entire app entry with owner login.
+ * The dedicated /identity-lab route permits local UI smoke tests without
+ * activating unported private account endpoints.
+ */
+export default function App() {
+  const hash = typeof window === 'undefined' ? '' : window.location.hash;
+  const identityCallback =
+    /^#(?:invite_token|recovery_token|confirmation_token|email_change_token|access_token)=/.test(hash);
+  const identityLabRoute = typeof window !== 'undefined' &&
+    window.location.pathname === '/identity-lab';
+
+  if (import.meta.env.VITE_OWNER_AUTH_LAB === 'true' || identityLabRoute || identityCallback) {
+    return <OwnerIdentityLogin />;
+  }
+  return <LegacyApp />;
 }

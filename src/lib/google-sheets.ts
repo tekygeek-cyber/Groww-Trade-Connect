@@ -21,9 +21,13 @@ export const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets.readonly',
 ];
 
-// Initialize Firebase App safely (singleton)
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+// The Firebase browser API key is a public client identifier, configured per build.
+// Restrict it to Firebase services in Google Cloud before enabling Sheets.
+const firebaseWebKey = import.meta.env.VITE_FIREBASE_API_KEY?.trim() ?? '';
+const firebaseApp = firebaseWebKey.startsWith('AIza')
+  ? (getApps().length > 0 ? getApp() : initializeApp({ ...firebaseConfig, apiKey: firebaseWebKey }))
+  : null;
+export const auth = firebaseApp ? getAuth(firebaseApp) : null;
 
 const provider = new GoogleAuthProvider();
 for (const scope of SCOPES) {
@@ -53,6 +57,12 @@ export function initAuth(
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) {
+  if (!auth) {
+    cachedAccessToken = null;
+    currentUser = null;
+    onAuthFailure?.();
+    return () => {};
+  }
   return onAuthStateChanged(auth, async (user: User | null) => {
     currentUser = user;
     if (user) {
@@ -74,6 +84,7 @@ export function initAuth(
  * Sign in with Google Popup and cache access token in-memory.
  */
 export async function googleSignIn(): Promise<{ user: User; accessToken: string } | null> {
+  if (!auth) throw new Error('Google Sheets sign-in unavailable until Firebase browser configuration is provided.');
   try {
     isSigningIn = true;
     const result = await signInWithPopup(auth, provider);
@@ -97,7 +108,7 @@ export async function googleSignIn(): Promise<{ user: User; accessToken: string 
  * Sign out and clear in-memory token.
  */
 export async function googleSignOut(): Promise<void> {
-  await signOut(auth);
+  if (auth) await signOut(auth);
   cachedAccessToken = null;
   currentUser = null;
 }
@@ -107,7 +118,7 @@ export async function getAccessToken(): Promise<string | null> {
 }
 
 export function getCurrentUser(): User | null {
-  return currentUser || auth.currentUser;
+  return currentUser || auth?.currentUser || null;
 }
 
 export function hasAccessToken(): boolean {

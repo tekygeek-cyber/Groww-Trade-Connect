@@ -1,0 +1,32 @@
+name: Netlify CLI preview bundling diagnostic (no deployment)
+
+on:
+  push:
+    branches: [feature/owner-only-auth-foundation-20261103]
+    paths: [.github/workflows/netlify-cli-build-diagnostic.yml, netlify.toml, netlify/functions/**, package.json, package-lock.json, src/**]
+permissions:
+  contents: read
+
+jobs:
+  netlify-cli-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install project using locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install Netlify CLI in isolated global environment
+        run: npm install --global netlify-cli@27.14.2 --no-audit --no-fund
+      - name: Show effective Netlify config with no network or project secrets
+        run: netlify build --offline --dry --context deploy-preview
+      - name: Execute local Netlify preview build, bundling functions
+        run: netlify build --offline --context deploy-preview
+      - name: Verify built output does not publish the private Express bundle
+        run: |
+          test -s dist/index.html
+          test ! -e dist/server.js
+          echo 'PASS offline Netlify preview build and no public Express bundle'

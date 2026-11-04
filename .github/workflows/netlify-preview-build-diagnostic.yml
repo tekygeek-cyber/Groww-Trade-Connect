@@ -1,0 +1,47 @@
+name: Netlify-compatible build diagnostic (no deploy)
+
+on:
+  push:
+    branches: [feature/owner-only-auth-foundation-20261103]
+    paths:
+      - .github/workflows/netlify-preview-build-diagnostic.yml
+      - package.json
+      - package-lock.json
+      - bun.lock
+      - src/**
+      - server/**
+      - netlify/**
+      - netlify.toml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  npm-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Clean install as a standard Netlify npm project
+        run: npm ci --no-audit --no-fund
+      - name: TypeScript check
+        run: npm run lint
+      - name: Verify existing standalone Node build
+        run: npm run build
+      - name: Run the exact Netlify frontend-only build
+        run: npm run build:netlify
+      - name: Verify publish directory contains no Express server bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s dist/index.html
+          test ! -e dist/server.js
+          test -s netlify/functions/identity-owner-session.mjs
+          test -s netlify/functions/owner-session.mjs
+          grep -q 'command = "npm run build:netlify"' netlify.toml
+          echo 'PASS: npm install, standalone build, Netlify frontend and no server bundle in dist'
